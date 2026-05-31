@@ -1,0 +1,10 @@
+# Dependencies
+node_modules/
+
+# macOS
+.DS_Store
+
+# Sandcastle local artifacts
+.sandcastle/.env
+.sandcastle/logs/
+.sandcastle/worktrees/
