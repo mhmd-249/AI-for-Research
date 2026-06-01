@@ -1,6 +1,15 @@
 # Dependencies
 node_modules/
 
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+
 # macOS
 .DS_Store
 
