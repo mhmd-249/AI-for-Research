@@ -47,7 +47,7 @@ from ..ids import (
 )
 from ..models import VerificationResult
 from .cache import VerifierCache, claim_text_hash
-from .judge import EntailmentResult, Judge, LocalityResult
+from .judge import EntailmentResult, Judge
 from .sources import (
     ApiDownError,
     ParseClientError,
@@ -230,7 +230,7 @@ class ClaimVerifier:
                 locality = await self._judge.locality(
                     source=candidate.source, body=candidate.body, claim_text=claim.claim_text
                 )
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:  # noqa: BLE001 — judge errors map to parse_error
                 return self._error_result(
                     claim,
                     source_canonical_id=canonical,
@@ -272,7 +272,7 @@ class ClaimVerifier:
                 entailment = await self._judge.entailment(
                     source=candidate.source, body=candidate.body, claim_text=claim.claim_text
                 )
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:  # noqa: BLE001 — judge errors map to parse_error
                 return self._error_result(
                     claim,
                     source_canonical_id=canonical,
@@ -486,6 +486,5 @@ __all__ = [
     "UNVERIFIABLE_BY_DESIGN_TYPES",
     "ClaimToVerify",
     "ClaimVerifier",
-    "LocalityResult",  # re-exported via verifier/__init__.py for convenience
     "RetryConfig",
 ]

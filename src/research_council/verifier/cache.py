@@ -83,26 +83,26 @@ class InMemoryVerifierCache:
     """Plain-dict implementation. Satisfies :class:`VerifierCache`."""
 
     def __init__(self) -> None:
-        self._sources: dict[tuple[str, str], SourceCandidate] = {}
-        self._locality: dict[tuple[str, str, str], LocalityResult] = {}
-        self._entailment: dict[tuple[str, str, str, str], EntailmentResult] = {}
+        self._sources: dict[tuple[SourceId, str], SourceCandidate] = {}
+        self._locality: dict[tuple[SourceId, str, str], LocalityResult] = {}
+        self._entailment: dict[tuple[SourceId, str, str, str], EntailmentResult] = {}
 
     # Source ---------------------------------------------------------------
     def get_source(
         self, *, canonical_id: SourceId, verifier_version: str
     ) -> SourceCandidate | None:
-        return self._sources.get((str(canonical_id), verifier_version))
+        return self._sources.get((canonical_id, verifier_version))
 
     def put_source(
         self, *, canonical_id: SourceId, verifier_version: str, value: SourceCandidate
     ) -> None:
-        self._sources[(str(canonical_id), verifier_version)] = value
+        self._sources[(canonical_id, verifier_version)] = value
 
     # Locality -------------------------------------------------------------
     def get_locality(
         self, *, canonical_id: SourceId, claim_hash: str, verifier_version: str
     ) -> LocalityResult | None:
-        return self._locality.get((str(canonical_id), claim_hash, verifier_version))
+        return self._locality.get((canonical_id, claim_hash, verifier_version))
 
     def put_locality(
         self,
@@ -112,7 +112,7 @@ class InMemoryVerifierCache:
         verifier_version: str,
         value: LocalityResult,
     ) -> None:
-        self._locality[(str(canonical_id), claim_hash, verifier_version)] = value
+        self._locality[(canonical_id, claim_hash, verifier_version)] = value
 
     # Entailment -----------------------------------------------------------
     def get_entailment(
@@ -124,7 +124,7 @@ class InMemoryVerifierCache:
         verifier_version: str,
     ) -> EntailmentResult | None:
         return self._entailment.get(
-            (str(canonical_id), claim_hash, claim_type.value, verifier_version)
+            (canonical_id, claim_hash, claim_type.value, verifier_version)
         )
 
     def put_entailment(
@@ -137,5 +137,5 @@ class InMemoryVerifierCache:
         value: EntailmentResult,
     ) -> None:
         self._entailment[
-            (str(canonical_id), claim_hash, claim_type.value, verifier_version)
+            (canonical_id, claim_hash, claim_type.value, verifier_version)
         ] = value

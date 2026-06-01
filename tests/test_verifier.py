@@ -29,7 +29,6 @@ from research_council.enums import (
 from research_council.ids import (
     FindingId,
     SequentialIdGenerator,
-    SourceId,
 )
 from research_council.models import Source
 from research_council.verifier import (
@@ -428,10 +427,8 @@ async def test_locality_cache_hit_skips_locality_judge() -> None:
     verifier = _build_verifier(registry=_registry(s2=s2, arxiv=arxiv), judge=judge, cache=cache)
 
     await verifier.verify(_claim())
-    # Pre-populate source cache miss for second run by clearing the source slot —
-    # we want to demonstrate the LOCALITY cache works even when source recomputes.
-    # Simpler: just run again with same source hint. Source cache hits too,
-    # so locality_calls stays at 1. That's the cleaner test of the locality slot:
+    # Second run with same claim: source and locality both hit cache — locality
+    # judge stays at one call.
     await verifier.verify(_claim())
     assert judge.locality_calls == 1
 
@@ -768,8 +765,3 @@ def test_claim_text_hash_collapses_whitespace_and_case() -> None:
     c = claim_text_hash("X reports 88% on benchmark Y.")
     assert a == b
     assert a != c
-
-
-def test_source_id_unused_var_silenced() -> None:
-    # Trivial reference so the SourceId import isn't flagged unused.
-    assert SourceId("doi:test") == "doi:test"
