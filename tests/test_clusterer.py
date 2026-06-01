@@ -244,6 +244,43 @@ def test_resists_over_merging_two_distinct_same_sounding_gaps(
     assert len(adjudicator.calls) == 1
 
 
+# --- configurable similarity threshold (the recall dial) --------------------
+
+
+def test_similarity_threshold_gates_which_pairs_reach_adjudicator(
+    ids: SequentialIdGenerator,
+) -> None:
+    """``similarity_threshold`` is the recall dial: a pair whose cosine sits
+    between two thresholds is adjudicated under the lower one but split without
+    adjudication under the higher one. The embedder narrows the search space;
+    raising the dial narrows it further."""
+    a = _finding(ids, "There is no training signal for learning the filter agent.")
+    b = _finding(ids, "There is no eval signal for measuring the filter agent.")
+    # Cosine of these two vectors is ~0.806 — above 0.7, below 0.9.
+    embedder = FakeEmbedder({a.claim_text: [1.0, 0.0], b.claim_text: [0.8, 0.59]})
+    adjudicator = FakeAdjudicator(
+        verdicts={frozenset({a.claim_text, b.claim_text}): AdjudicationVerdict.SAME},
+    )
+
+    # Default 0.7: the pair is a candidate, gets adjudicated SAME, merges.
+    merged = cluster_findings([a, b], embedder=embedder, adjudicator=adjudicator)
+    assert len(adjudicator.calls) == 1
+    assert len(merged.clusters) == 1
+    assert set(merged.clusters[0].finding_ids) == {a.id, b.id}
+
+    # Raised to 0.9: the same pair is below cutoff, never adjudicated, split.
+    adjudicator2 = FakeAdjudicator(
+        verdicts={frozenset({a.claim_text, b.claim_text}): AdjudicationVerdict.SAME},
+    )
+    split = cluster_findings(
+        [a, b], embedder=embedder, adjudicator=adjudicator2, similarity_threshold=0.9
+    )
+    assert adjudicator2.calls == []
+    cluster_sets = [set(c.finding_ids) for c in split.clusters]
+    assert {a.id} in cluster_sets
+    assert {b.id} in cluster_sets
+
+
 # --- transitive merging across multiple SAME verdicts -----------------------
 
 
