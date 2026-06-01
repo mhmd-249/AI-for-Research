@@ -36,7 +36,7 @@ from typing import Any, Literal, Protocol
 
 from .domain.brief_ops import revise_brief
 from .enums import Confidence, LensId
-from .ids import IdGenerator, LensRunId, new_lens_run_id
+from .ids import FindingId, IdGenerator, LensRunId, new_lens_run_id
 from .models import Brief, Finding, LensRun
 
 # Brief *content* fields a Finding's claim_text could plausibly reference. Identity
@@ -248,7 +248,7 @@ def propose_invalidation(
     re-run or reuse under the material-edit rule (story 120), with one-line
     reasoning for each (story 119). Deterministic and store-free."""
     detector = detector or KeywordOverlapDetector()
-    by_id: dict[Any, Finding] = {f.id: f for f in findings}
+    by_id: dict[FindingId, Finding] = {f.id: f for f in findings}
     diff = diff_briefs(old_brief, new_brief)
 
     proposals = tuple(
