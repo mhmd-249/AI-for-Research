@@ -118,9 +118,7 @@ def test_fail_rate_excludes_non_evaluated_statuses_from_denominator(
     assert report.rate == 0.5
 
 
-def test_fail_rate_empty_is_zero_not_division_error(
-    ids: SequentialIdGenerator,
-) -> None:
+def test_fail_rate_empty_is_zero_not_division_error() -> None:
     report = verification_fail_rate([])
     assert report.evaluated_count == 0
     assert report.rate == 0.0
@@ -167,7 +165,7 @@ def test_gap_recall_counts_resolved_refs_as_surfaced(
     assert report.missed_excerpts == ("baselines exclude RAG",)
 
 
-def test_gap_recall_empty_labels_is_zero(ids: SequentialIdGenerator) -> None:
+def test_gap_recall_empty_labels_is_zero() -> None:
     report = gap_recall([])
     assert report.label_count == 0
     assert report.recall == 0.0

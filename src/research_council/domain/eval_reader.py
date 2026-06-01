@@ -141,10 +141,11 @@ def gap_recall(labels: Iterable[VerdictRef]) -> GapRecall:
     recall and is reported in ``missed_excerpts`` so the miss is visible, never
     silently dropped."""
     labels = tuple(labels)
-    surfaced = sum(1 for ref in labels if ref.resolved_finding_ids)
     missed = tuple(ref.claim_text_excerpt for ref in labels if not ref.resolved_finding_ids)
     return GapRecall(
-        surfaced_count=surfaced, label_count=len(labels), missed_excerpts=missed
+        surfaced_count=len(labels) - len(missed),
+        label_count=len(labels),
+        missed_excerpts=missed,
     )
 
 
@@ -302,9 +303,9 @@ def compare_lens_ablation(
 
     full = _gap_claim_texts(store, full_event)
     ablated = _gap_claim_texts(store, ablated_event)
-    only_full = tuple(full[k] for k in full if k not in ablated)
-    in_both = tuple(full[k] for k in full if k in ablated)
-    only_ablated = tuple(ablated[k] for k in ablated if k not in full)
+    only_full = tuple(v for k, v in full.items() if k not in ablated)
+    in_both = tuple(v for k, v in full.items() if k in ablated)
+    only_ablated = tuple(v for k, v in ablated.items() if k not in full)
     return AblationComparison(
         removed_lens=removed_lens,
         gaps_only_in_full=only_full,
