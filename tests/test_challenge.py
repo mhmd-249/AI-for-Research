@@ -31,6 +31,7 @@ from research_council.enums import (
 )
 from research_council.ids import (
     SequentialIdGenerator,
+    SessionId,
     new_challenge_id,
     new_finding_id,
     new_lens_run_id,
@@ -40,14 +41,12 @@ from research_council.ids import (
 from research_council.models import (
     Brief,
     Challenge,
+    Finding,
     FindingDraft,
     LensRun,
     ScopedChallengeOutputDraft,
     Session,
     Synthesis,
-)
-from research_council.models import (
-    Finding as FindingModel,
 )
 from research_council.runtime.challenge import (
     ChallengeResult,
@@ -91,7 +90,7 @@ class FakeAdjudicator:
     def __init__(self, *, default: AdjudicationVerdict = AdjudicationVerdict.DIFFERENT) -> None:
         self._default = default
 
-    def adjudicate(self, finding_a: FindingModel, finding_b: FindingModel) -> AdjudicationVerdict:
+    def adjudicate(self, finding_a: Finding, finding_b: Finding) -> AdjudicationVerdict:
         return self._default
 
 
@@ -114,8 +113,8 @@ def _finding(
     *,
     claim_type: ClaimType = ClaimType.GAP,
     confidence: Confidence = Confidence.LOAD_BEARING,
-) -> FindingModel:
-    return FindingModel(
+) -> Finding:
+    return Finding(
         id=new_finding_id(ids),
         claim_text=text,
         claim_type=claim_type,
@@ -155,7 +154,7 @@ class FakeRunner:
 class CountingResynthesizer:
     """A re-synthesis seam that records how many times it fired."""
 
-    def __init__(self, session_id: str, ids: SequentialIdGenerator) -> None:
+    def __init__(self, session_id: SessionId, ids: SequentialIdGenerator) -> None:
         self.calls = 0
         self._session_id = session_id
         self._ids = ids
@@ -164,7 +163,7 @@ class CountingResynthesizer:
         self.calls += 1
         synthesis = Synthesis(
             id=new_synthesis_id(self._ids),
-            session_id=self._session_id,  # type: ignore[arg-type]
+            session_id=self._session_id,
             brief_version=1,
         )
         rendered = RenderedSynthesis(
@@ -211,7 +210,7 @@ def _seed_lens_run(
     *,
     session: Session,
     lens_id: LensId,
-    findings: tuple[FindingModel, ...],
+    findings: tuple[Finding, ...],
 ) -> LensRun:
     for f in findings:
         store.save_finding(f)
@@ -231,7 +230,7 @@ def _seed_lens_run(
 
 
 def _challenge(
-    ids: SequentialIdGenerator, session: Session, finding: FindingModel
+    ids: SequentialIdGenerator, session: Session, finding: Finding
 ) -> Challenge:
     return Challenge(
         id=new_challenge_id(ids),

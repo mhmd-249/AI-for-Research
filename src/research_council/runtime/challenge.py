@@ -54,7 +54,7 @@ LLM and no real embedder.
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Literal, Protocol
 
 from ..enums import ChangeReason, LensId, LensRunStatus, VerificationStatus
@@ -104,6 +104,7 @@ def build_scoped_challenge_prompt(inputs: ScopedChallengeInput) -> str:
     prior Findings provide the context it is allowed to reconsider. No peer
     outputs appear (story 106)."""
     challenged = inputs.challenged_finding
+    other_prior = [f for f in inputs.prior_self if f.id != challenged.id]
     lines = [
         f"## Brief\nproblem_statement: {inputs.brief.problem_statement}",
         f"proposed_solution: {inputs.brief.proposed_solution or '(none)'}",
@@ -116,12 +117,10 @@ def build_scoped_challenge_prompt(inputs: ScopedChallengeInput) -> str:
         "## The researcher's challenge",
         inputs.challenge_text,
     ]
-    if inputs.prior_self:
+    if other_prior:
         lines.append("")
         lines.append("## Your other prior findings on this brief (context only)")
-        for f in inputs.prior_self:
-            if f.id == challenged.id:
-                continue
+        for f in other_prior:
             lines.append(f"  ({f.claim_type.value}, {f.confidence.value}) {f.claim_text}")
     lines.append("")
     lines.append(
@@ -189,7 +188,7 @@ class ChallengeResult:
     accepted: bool
     response_finding: Finding | None = None
     change_reason: ChangeReason | None = None
-    sibling_impact_flags: tuple[str, ...] = field(default_factory=tuple)
+    sibling_impact_flags: tuple[str, ...] = ()
     refusal_reason: str | None = None
     resynthesis: SynthesisResult | None = None
 
