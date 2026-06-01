@@ -54,7 +54,7 @@ class FakeEmbedder:
         # Unique sparse vector — orthogonal to every other unmapped text.
         idx = self._fallback_index
         self._fallback_index += 1
-        vec = [0.0] * (self._fallback_index + 1)
+        vec = [0.0] * (idx + 1)
         vec[idx] = 1.0
         return vec
 
