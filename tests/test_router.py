@@ -24,6 +24,7 @@ from typing import Any
 
 import pytest
 
+from research_council.domain.brief_ops import revise_brief
 from research_council.enums import LensId, Mode
 from research_council.ids import SequentialIdGenerator
 from research_council.models import Brief
@@ -36,7 +37,6 @@ from research_council.router import (
 )
 from research_council.runtime.llm import (
     FakeLlmClient,
-    LlmRequest,
     LlmResponse,
     ToolUseBlock,
 )
@@ -194,19 +194,15 @@ async def test_mode_shifts_prompt_target_size_only(brief: Brief) -> None:
     assert len(deep_client.requests) == 1
     assert len(exp_client.requests) == 1
 
-    def _system_prompt(req: LlmRequest) -> str:
-        return req.system
-
-    def _tool_names(req: LlmRequest) -> set[str]:
-        return {t.name for t in req.tools}
-
     deep_req = deep_client.requests[0]
     exp_req = exp_client.requests[0]
 
     # Same tool advertised, same single tool — only the system prompt differs.
-    assert _tool_names(deep_req) == _tool_names(exp_req) == {"emit_panel"}
-    assert str(DEEP_DIVE_DEFAULT_SIZE) in _system_prompt(deep_req)
-    assert str(EXPLORATORY_DEFAULT_SIZE) in _system_prompt(exp_req)
+    deep_tools = {t.name for t in deep_req.tools}
+    exp_tools = {t.name for t in exp_req.tools}
+    assert deep_tools == exp_tools == {"emit_panel"}
+    assert str(DEEP_DIVE_DEFAULT_SIZE) in deep_req.system
+    assert str(EXPLORATORY_DEFAULT_SIZE) in exp_req.system
 
 
 # --- DispatchEvent on panel edit (story 85) ---------------------------------
@@ -247,8 +243,6 @@ def test_panel_constraints_edit_during_intake_is_brief_edit(brief: Brief) -> Non
     # path goes through revise_brief (existing module), which we test here to
     # contrast with the dispatch-time path above — a constraints edit DOES bump
     # brief version.
-    from research_council.domain.brief_ops import revise_brief
-
     revised = revise_brief(brief, panel_constraints=(LensId.PRIOR_ART, LensId.ADVERSARIAL))
     assert revised.version == brief.version + 1
     assert revised.panel_constraints == (LensId.PRIOR_ART, LensId.ADVERSARIAL)

@@ -18,6 +18,7 @@ only the dispatch configuration changes.
 
 from __future__ import annotations
 
+from collections import Counter
 from datetime import datetime
 from typing import Any
 
@@ -144,15 +145,12 @@ def build_router_user_prompt(brief: Brief) -> str:
 
 def _validate_full_coverage(rationales: list[LensRationale]) -> None:
     """All nine lenses must have exactly one rationale (story 81)."""
-    seen = [r.lens_id for r in rationales]
-    seen_set = set(seen)
-    missing = set(LensId) - seen_set
+    counts = Counter(r.lens_id for r in rationales)
+    missing = sorted(lens.value for lens in set(LensId) - counts.keys())
     if missing:
-        raise ValueError(
-            f"missing rationale for lens(es): {sorted(m.value for m in missing)}"
-        )
-    if len(seen) != len(seen_set):
-        duplicates = sorted({lens.value for lens in seen if seen.count(lens) > 1})
+        raise ValueError(f"missing rationale for lens(es): {missing}")
+    duplicates = sorted(lens.value for lens, n in counts.items() if n > 1)
+    if duplicates:
         raise ValueError(f"duplicate rationale(s) for lens(es): {duplicates}")
 
 
