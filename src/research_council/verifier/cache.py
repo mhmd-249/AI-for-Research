@@ -3,11 +3,12 @@
 Three independently-keyed caches at three stage boundaries:
 
   * **Source** — keyed on ``canonical_id``. Cached result is the
-    :class:`SourceCandidate` from Stage 1.
+    :class:`SourceCandidate` from Stage 1. Indefinite with a 24h metadata
+    refresh — entries past the TTL surface as a miss so the verifier re-queries.
   * **Locality** — keyed on ``(source_canonical_id, claim_text_hash)``. Cached
-    result is the Stage 2 :class:`LocalityResult`.
+    result is the Stage 2 :class:`LocalityResult`. Indefinite.
   * **Entailment** — keyed on ``(source_canonical_id, claim_text_hash, claim_type)``.
-    Cached result is the Stage 3 :class:`EntailmentResult`.
+    Cached result is the Stage 3 :class:`EntailmentResult`. Indefinite.
 
 Every key also carries ``verifier_version`` — bumping the version is how a
 prompt or model upgrade invalidates everything cleanly without manual eviction.
@@ -16,12 +17,27 @@ prompt or model upgrade invalidates everything cleanly without manual eviction.
 from __future__ import annotations
 
 import hashlib
+import time
 from typing import Protocol
 
 from ..enums import ClaimType
 from ..ids import SourceId
 from .judge import EntailmentResult, LocalityResult
 from .sources import SourceCandidate
+
+DEFAULT_SOURCE_TTL_SECONDS: float = 24 * 60 * 60  # story 36 — 24h metadata refresh
+
+
+class Clock(Protocol):
+    """Monotonic time source for the Source-cache TTL. Injectable so tests can
+    advance time past 24h without sleeping."""
+
+    def now(self) -> float: ...
+
+
+class _SystemClock:
+    def now(self) -> float:
+        return time.monotonic()
 
 
 def claim_text_hash(claim_text: str) -> str:
@@ -80,10 +96,22 @@ class VerifierCache(Protocol):
 
 
 class InMemoryVerifierCache:
-    """Plain-dict implementation. Satisfies :class:`VerifierCache`."""
+    """Plain-dict implementation. Satisfies :class:`VerifierCache`.
 
-    def __init__(self) -> None:
-        self._sources: dict[tuple[SourceId, str], SourceCandidate] = {}
+    The Source cache carries an entry timestamp so a stale (>24h) hit surfaces
+    as a miss — story 36's "indefinite with 24h metadata refresh". Locality and
+    Entailment are timestamp-free: indefinite by spec.
+    """
+
+    def __init__(
+        self,
+        *,
+        clock: Clock | None = None,
+        source_ttl_seconds: float = DEFAULT_SOURCE_TTL_SECONDS,
+    ) -> None:
+        self._clock: Clock = clock or _SystemClock()
+        self._source_ttl = source_ttl_seconds
+        self._sources: dict[tuple[SourceId, str], tuple[float, SourceCandidate]] = {}
         self._locality: dict[tuple[SourceId, str, str], LocalityResult] = {}
         self._entailment: dict[tuple[SourceId, str, str, str], EntailmentResult] = {}
 
@@ -91,12 +119,18 @@ class InMemoryVerifierCache:
     def get_source(
         self, *, canonical_id: SourceId, verifier_version: str
     ) -> SourceCandidate | None:
-        return self._sources.get((canonical_id, verifier_version))
+        entry = self._sources.get((canonical_id, verifier_version))
+        if entry is None:
+            return None
+        stored_at, candidate = entry
+        if self._clock.now() - stored_at > self._source_ttl:
+            return None
+        return candidate
 
     def put_source(
         self, *, canonical_id: SourceId, verifier_version: str, value: SourceCandidate
     ) -> None:
-        self._sources[(canonical_id, verifier_version)] = value
+        self._sources[(canonical_id, verifier_version)] = (self._clock.now(), value)
 
     # Locality -------------------------------------------------------------
     def get_locality(

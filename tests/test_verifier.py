@@ -453,6 +453,41 @@ async def test_entailment_cache_keyed_on_claim_type() -> None:
     assert judge.entailment_calls == 2
 
 
+async def test_source_metadata_refresh_after_24h() -> None:
+    """Story 36: the Source cache is "indefinite with 24h metadata refresh."
+    A cached source older than the TTL surfaces as a miss so the verifier
+    re-queries — locality / entailment caches stay indefinite by design."""
+    src = _source(title="T", arxiv="2307.03172", has_full_text=True)
+    s2 = ScriptedClient(name_="s2", script=[
+        SourceCandidate(src, "body"), SourceCandidate(src, "body"),
+    ])
+    arxiv = _miss("arxiv")
+
+    @dataclass
+    class FakeClock:
+        t: float = 0.0
+
+        def now(self) -> float:
+            return self.t
+
+    clock = FakeClock()
+    cache = InMemoryVerifierCache(clock=clock, source_ttl_seconds=24 * 3600)
+    verifier = _build_verifier(registry=_registry(s2=s2, arxiv=arxiv), cache=cache)
+
+    await verifier.verify(_claim())
+    assert len(s2.calls) == 1
+
+    # Within 24h: still a hit, no second API call.
+    clock.t = 23 * 3600
+    await verifier.verify(_claim())
+    assert len(s2.calls) == 1
+
+    # Past 24h: cache entry is stale, verifier re-queries Stage 1.
+    clock.t = 24 * 3600 + 1
+    await verifier.verify(_claim())
+    assert len(s2.calls) == 2
+
+
 async def test_verifier_version_bump_invalidates_cache() -> None:
     """A prompt/model upgrade is signaled by bumping verifier_version; every
     cache layer must miss for the new version (story 36)."""

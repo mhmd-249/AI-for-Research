@@ -14,6 +14,8 @@ from .api import (
     RetryConfig,
 )
 from .cache import (
+    DEFAULT_SOURCE_TTL_SECONDS,
+    Clock,
     InMemoryVerifierCache,
     VerifierCache,
     claim_text_hash,
@@ -39,10 +41,12 @@ from .sources import (
 )
 
 __all__ = [
+    "DEFAULT_SOURCE_TTL_SECONDS",
     "UNVERIFIABLE_BY_DESIGN_TYPES",
     "ApiDownError",
     "ClaimToVerify",
     "ClaimVerifier",
+    "Clock",
     "EntailmentResult",
     "EntailmentVerdict",
     "InMemoryVerifierCache",
