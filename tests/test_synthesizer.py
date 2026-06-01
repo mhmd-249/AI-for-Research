@@ -10,6 +10,8 @@ narrator make the whole pipeline deterministic.
 
 from __future__ import annotations
 
+import pytest
+
 from research_council.enums import (
     ChangeReason,
     ClaimType,
@@ -131,9 +133,7 @@ class EchoNarrator:
     def narrate(self, structure: ComputedStructure) -> NarrationResult:
         self.calls += 1
         return NarrationResult(
-            agreement_cluster_refs=tuple(
-                c.finding_refs for c in structure.agreement_clusters
-            ),
+            agreement_cluster_refs=tuple(c.finding_refs for c in structure.agreement_clusters),
             declared_gap_refs=tuple(g.finding_refs for g in structure.declared_gaps),
             emergent_gaps=self._emergent_gaps,
             conditional_recommendations=self._recommendations,
@@ -149,9 +149,7 @@ class TamperingNarrator:
 
     def narrate(self, structure: ComputedStructure) -> NarrationResult:
         self.calls += 1
-        merged = tuple(
-            fid for c in structure.agreement_clusters for fid in c.finding_refs
-        )
+        merged = tuple(fid for c in structure.agreement_clusters for fid in c.finding_refs)
         return NarrationResult(
             agreement_cluster_refs=(merged,) if merged else (),
             declared_gap_refs=tuple(g.finding_refs for g in structure.declared_gaps),
@@ -169,12 +167,16 @@ def test_agreement_cluster_counts_and_confidence_breakdown(
     ids: SequentialIdGenerator,
 ) -> None:
     a = _finding(
-        ids, "Latency doubles under the proposed change.",
-        claim_type=ClaimType.EMPIRICAL, confidence=Confidence.LOAD_BEARING,
+        ids,
+        "Latency doubles under the proposed change.",
+        claim_type=ClaimType.EMPIRICAL,
+        confidence=Confidence.LOAD_BEARING,
     )
     b = _finding(
-        ids, "Latency roughly doubles when the filter runs.",
-        claim_type=ClaimType.EMPIRICAL, confidence=Confidence.SUPPORTING,
+        ids,
+        "Latency roughly doubles when the filter runs.",
+        claim_type=ClaimType.EMPIRICAL,
+        confidence=Confidence.SUPPORTING,
     )
     embedder = FakeEmbedder(_same_embeddings(a.claim_text, b.claim_text))
     adjudicator = FakeAdjudicator(
@@ -199,12 +201,15 @@ def test_split_is_preserved_as_two_clusters_never_averaged(
     ids: SequentialIdGenerator,
 ) -> None:
     """6-vs-4-style split: two clusters with two counts, never 'mostly agree'."""
-    a = _finding(ids, "Mechanism A explains the failure.",
-                 claim_type=ClaimType.MECHANISM_HYPOTHESIS)
-    b = _finding(ids, "Mechanism A is the cause of the failure.",
-                 claim_type=ClaimType.MECHANISM_HYPOTHESIS)
-    c = _finding(ids, "Mechanism B explains the failure instead.",
-                 claim_type=ClaimType.MECHANISM_HYPOTHESIS)
+    a = _finding(
+        ids, "Mechanism A explains the failure.", claim_type=ClaimType.MECHANISM_HYPOTHESIS
+    )
+    b = _finding(
+        ids, "Mechanism A is the cause of the failure.", claim_type=ClaimType.MECHANISM_HYPOTHESIS
+    )
+    c = _finding(
+        ids, "Mechanism B explains the failure instead.", claim_type=ClaimType.MECHANISM_HYPOTHESIS
+    )
     # All three look similar to the embedder; adjudicator merges a+b, splits c.
     embedder = FakeEmbedder(_same_embeddings(a.claim_text, b.claim_text, c.claim_text))
     adjudicator = FakeAdjudicator(
@@ -226,13 +231,17 @@ def test_contradicted_cluster_becomes_tension_not_agreement(
     ids: SequentialIdGenerator,
 ) -> None:
     a = _finding(
-        ids, "The benchmark shows a 2x speedup.",
-        claim_type=ClaimType.EMPIRICAL, confidence=Confidence.LOAD_BEARING,
+        ids,
+        "The benchmark shows a 2x speedup.",
+        claim_type=ClaimType.EMPIRICAL,
+        confidence=Confidence.LOAD_BEARING,
         verification_status=VerificationStatus.CONTRADICTED,
     )
     b = _finding(
-        ids, "A 2x speedup is observed on the benchmark.",
-        claim_type=ClaimType.EMPIRICAL, confidence=Confidence.LOAD_BEARING,
+        ids,
+        "A 2x speedup is observed on the benchmark.",
+        claim_type=ClaimType.EMPIRICAL,
+        confidence=Confidence.LOAD_BEARING,
     )
     embedder = FakeEmbedder(_same_embeddings(a.claim_text, b.claim_text))
     adjudicator = FakeAdjudicator(
@@ -253,10 +262,14 @@ def test_contradicted_cluster_becomes_tension_not_agreement(
 def test_opposing_mechanism_split_becomes_opposing_pair_tension(
     ids: SequentialIdGenerator,
 ) -> None:
-    a = _finding(ids, "The failure is caused by attention dilution.",
-                 claim_type=ClaimType.FAILURE_MODE)
-    b = _finding(ids, "The failure is caused by attention saturation instead.",
-                 claim_type=ClaimType.FAILURE_MODE)
+    a = _finding(
+        ids, "The failure is caused by attention dilution.", claim_type=ClaimType.FAILURE_MODE
+    )
+    b = _finding(
+        ids,
+        "The failure is caused by attention saturation instead.",
+        claim_type=ClaimType.FAILURE_MODE,
+    )
     embedder = FakeEmbedder(_same_embeddings(a.claim_text, b.claim_text))
     # High-similarity pair the adjudicator splits → opposing pair.
     adjudicator = FakeAdjudicator(
@@ -278,12 +291,15 @@ def test_opposing_mechanism_split_becomes_opposing_pair_tension(
 def test_declared_gaps_clustered_from_gap_findings(
     ids: SequentialIdGenerator,
 ) -> None:
-    a = _finding(ids, "No training signal exists for the filter agent.",
-                 confidence=Confidence.LOAD_BEARING)
-    b = _finding(ids, "The filter agent lacks any training signal.",
-                 confidence=Confidence.SUPPORTING)
-    other = _finding(ids, "Inference latency is acceptable in practice.",
-                     claim_type=ClaimType.EMPIRICAL)
+    a = _finding(
+        ids, "No training signal exists for the filter agent.", confidence=Confidence.LOAD_BEARING
+    )
+    b = _finding(
+        ids, "The filter agent lacks any training signal.", confidence=Confidence.SUPPORTING
+    )
+    other = _finding(
+        ids, "Inference latency is acceptable in practice.", claim_type=ClaimType.EMPIRICAL
+    )
     embedder = FakeEmbedder(_same_embeddings(a.claim_text, b.claim_text))
     adjudicator = FakeAdjudicator(
         {frozenset({a.claim_text, b.claim_text}): AdjudicationVerdict.SAME}
@@ -304,8 +320,9 @@ def test_declared_gaps_clustered_from_gap_findings(
 
 
 def test_weak_exploratory_singleton_gap_is_weak(ids: SequentialIdGenerator) -> None:
-    g = _finding(ids, "Possibly the cache eviction policy matters here.",
-                 confidence=Confidence.EXPLORATORY)
+    g = _finding(
+        ids, "Possibly the cache eviction policy matters here.", confidence=Confidence.EXPLORATORY
+    )
     structure = compute_structure(
         findings=[g], runs=[], embedder=FakeEmbedder({}), adjudicator=FakeAdjudicator()
     )
@@ -321,7 +338,9 @@ def test_zero_finding_succeeded_lens_is_soft_anomaly(
 ) -> None:
     empty_run = _run(ids, lens_id=LensId.ARCHITECTURE, status=LensRunStatus.SUCCEEDED)
     structure = compute_structure(
-        findings=[], runs=[empty_run], embedder=FakeEmbedder({}),
+        findings=[],
+        runs=[empty_run],
+        embedder=FakeEmbedder({}),
         adjudicator=FakeAdjudicator(),
     )
     assert len(structure.anomalies) == 1
@@ -335,7 +354,9 @@ def test_refused_and_failed_lenses_are_not_anomalies(
     refused = _run(ids, lens_id=LensId.ADVERSARIAL, status=LensRunStatus.REFUSED)
     invalid = _run(ids, lens_id=LensId.PRIOR_ART, status=LensRunStatus.SCHEMA_INVALID)
     structure = compute_structure(
-        findings=[], runs=[refused, invalid], embedder=FakeEmbedder({}),
+        findings=[],
+        runs=[refused, invalid],
+        embedder=FakeEmbedder({}),
         adjudicator=FakeAdjudicator(),
     )
     assert structure.anomalies == ()
@@ -349,8 +370,10 @@ def test_superseded_finding_is_dropped_synthesis_references_winner(
 ) -> None:
     old = _finding(ids, "The filter agent has a circularity problem.")
     new = _finding(
-        ids, "On reflection, the filter circularity is partly resolvable.",
-        supersedes=old.id, change_reason=ChangeReason.REVISED_RECONSIDERED,
+        ids,
+        "On reflection, the filter circularity is partly resolvable.",
+        supersedes=old.id,
+        change_reason=ChangeReason.REVISED_RECONSIDERED,
     )
     winners = resolve_winning_findings([old, new])
     assert winners == [new]
@@ -375,10 +398,12 @@ def test_validate_narration_accepts_honest_echo(ids: SequentialIdGenerator) -> N
 def test_validate_narration_rejects_altered_membership(
     ids: SequentialIdGenerator,
 ) -> None:
-    a = _finding(ids, "Mechanism A explains the failure.",
-                 claim_type=ClaimType.MECHANISM_HYPOTHESIS)
-    b = _finding(ids, "Mechanism B explains the failure instead.",
-                 claim_type=ClaimType.MECHANISM_HYPOTHESIS)
+    a = _finding(
+        ids, "Mechanism A explains the failure.", claim_type=ClaimType.MECHANISM_HYPOTHESIS
+    )
+    b = _finding(
+        ids, "Mechanism B explains the failure instead.", claim_type=ClaimType.MECHANISM_HYPOTHESIS
+    )
     # Two distinct agreement clusters (split).
     embedder = FakeEmbedder(_same_embeddings(a.claim_text, b.claim_text))
     adjudicator = FakeAdjudicator(default=AdjudicationVerdict.DIFFERENT)
@@ -391,21 +416,19 @@ def test_validate_narration_rejects_altered_membership(
         agreement_cluster_refs=((a.id, b.id),),  # merged the two clusters
         declared_gap_refs=(),
     )
-    try:
+    with pytest.raises(NarrationValidationError):
         validate_narration(structure, tampered)
-        raised = False
-    except NarrationValidationError:
-        raised = True
-    assert raised
 
 
 def test_two_strike_narration_falls_back_to_structure_only(
     ids: SequentialIdGenerator,
 ) -> None:
-    a = _finding(ids, "Mechanism A explains the failure.",
-                 claim_type=ClaimType.MECHANISM_HYPOTHESIS)
-    b = _finding(ids, "Mechanism B explains the failure instead.",
-                 claim_type=ClaimType.MECHANISM_HYPOTHESIS)
+    a = _finding(
+        ids, "Mechanism A explains the failure.", claim_type=ClaimType.MECHANISM_HYPOTHESIS
+    )
+    b = _finding(
+        ids, "Mechanism B explains the failure instead.", claim_type=ClaimType.MECHANISM_HYPOTHESIS
+    )
     embedder = FakeEmbedder(_same_embeddings(a.claim_text, b.claim_text))
     adjudicator = FakeAdjudicator(default=AdjudicationVerdict.DIFFERENT)
     structure = compute_structure(
@@ -430,12 +453,21 @@ def test_synthesize_end_to_end_orders_gaps_first_agreements_last(
     session_ids = SequentialIdGenerator()
     session_id = new_session_id(session_ids)
 
-    gap = _finding(ids, "No training signal exists for the filter agent.",
-                   confidence=Confidence.LOAD_BEARING)
-    agree_a = _finding(ids, "Inference latency is acceptable in practice.",
-                       claim_type=ClaimType.EMPIRICAL, confidence=Confidence.SUPPORTING)
-    agree_b = _finding(ids, "Latency stays acceptable when the filter runs.",
-                       claim_type=ClaimType.EMPIRICAL, confidence=Confidence.SUPPORTING)
+    gap = _finding(
+        ids, "No training signal exists for the filter agent.", confidence=Confidence.LOAD_BEARING
+    )
+    agree_a = _finding(
+        ids,
+        "Inference latency is acceptable in practice.",
+        claim_type=ClaimType.EMPIRICAL,
+        confidence=Confidence.SUPPORTING,
+    )
+    agree_b = _finding(
+        ids,
+        "Latency stays acceptable when the filter runs.",
+        claim_type=ClaimType.EMPIRICAL,
+        confidence=Confidence.SUPPORTING,
+    )
     embedder = FakeEmbedder(_same_embeddings(agree_a.claim_text, agree_b.claim_text))
     adjudicator = FakeAdjudicator(
         {frozenset({agree_a.claim_text, agree_b.claim_text}): AdjudicationVerdict.SAME}
@@ -478,13 +510,17 @@ def test_synthesize_inline_trust_marks_contradicted_cluster_alarming(
     ids: SequentialIdGenerator,
 ) -> None:
     a = _finding(
-        ids, "The benchmark shows a 2x speedup.",
-        claim_type=ClaimType.EMPIRICAL, confidence=Confidence.LOAD_BEARING,
+        ids,
+        "The benchmark shows a 2x speedup.",
+        claim_type=ClaimType.EMPIRICAL,
+        confidence=Confidence.LOAD_BEARING,
         verification_status=VerificationStatus.CONTRADICTED,
     )
     b = _finding(
-        ids, "A 2x speedup is observed on the benchmark.",
-        claim_type=ClaimType.EMPIRICAL, confidence=Confidence.LOAD_BEARING,
+        ids,
+        "A 2x speedup is observed on the benchmark.",
+        claim_type=ClaimType.EMPIRICAL,
+        confidence=Confidence.LOAD_BEARING,
     )
     embedder = FakeEmbedder(_same_embeddings(a.claim_text, b.claim_text))
     adjudicator = FakeAdjudicator(
@@ -492,9 +528,14 @@ def test_synthesize_inline_trust_marks_contradicted_cluster_alarming(
     )
 
     result = synthesize(
-        findings=[a, b], runs=[], embedder=embedder, adjudicator=adjudicator,
-        narrator=EchoNarrator(), id_generator=ids,
-        session_id=new_session_id(SequentialIdGenerator()), brief_version=1,
+        findings=[a, b],
+        runs=[],
+        embedder=embedder,
+        adjudicator=adjudicator,
+        narrator=EchoNarrator(),
+        id_generator=ids,
+        session_id=new_session_id(SequentialIdGenerator()),
+        brief_version=1,
     )
 
     # The contradicted, multi-lens claim leads as an alarming tension.
@@ -509,14 +550,20 @@ def test_synthesize_marks_revised_under_challenge_no_evidence(
     ids: SequentialIdGenerator,
 ) -> None:
     g = _finding(
-        ids, "On reflection the circularity concern is weaker than stated.",
+        ids,
+        "On reflection the circularity concern is weaker than stated.",
         confidence=Confidence.SUPPORTING,
         change_reason=ChangeReason.REVISED_RECONSIDERED,
     )
     result = synthesize(
-        findings=[g], runs=[], embedder=FakeEmbedder({}), adjudicator=FakeAdjudicator(),
-        narrator=EchoNarrator(), id_generator=ids,
-        session_id=new_session_id(SequentialIdGenerator()), brief_version=1,
+        findings=[g],
+        runs=[],
+        embedder=FakeEmbedder({}),
+        adjudicator=FakeAdjudicator(),
+        narrator=EchoNarrator(),
+        id_generator=ids,
+        session_id=new_session_id(SequentialIdGenerator()),
+        brief_version=1,
     )
     item = result.rendered.primary[0]
     assert item.trust.revised_under_challenge_no_evidence is True
@@ -525,14 +572,21 @@ def test_synthesize_marks_revised_under_challenge_no_evidence(
 def test_weak_gap_collapsed_into_minor_speculative_band(
     ids: SequentialIdGenerator,
 ) -> None:
-    weak = _finding(ids, "Possibly the cache eviction policy matters here.",
-                    confidence=Confidence.EXPLORATORY)
-    strong = _finding(ids, "No training signal exists for the filter agent.",
-                      confidence=Confidence.LOAD_BEARING)
+    weak = _finding(
+        ids, "Possibly the cache eviction policy matters here.", confidence=Confidence.EXPLORATORY
+    )
+    strong = _finding(
+        ids, "No training signal exists for the filter agent.", confidence=Confidence.LOAD_BEARING
+    )
     result = synthesize(
-        findings=[weak, strong], runs=[], embedder=FakeEmbedder({}),
-        adjudicator=FakeAdjudicator(), narrator=EchoNarrator(), id_generator=ids,
-        session_id=new_session_id(SequentialIdGenerator()), brief_version=1,
+        findings=[weak, strong],
+        runs=[],
+        embedder=FakeEmbedder({}),
+        adjudicator=FakeAdjudicator(),
+        narrator=EchoNarrator(),
+        id_generator=ids,
+        session_id=new_session_id(SequentialIdGenerator()),
+        brief_version=1,
     )
     primary_refs = {fid for item in result.rendered.primary for fid in item.finding_refs}
     minor_refs = {fid for item in result.rendered.minor_speculative for fid in item.finding_refs}
@@ -546,8 +600,13 @@ def test_synthesize_surfaces_zero_finding_anomaly_in_output(
     empty_run = _run(ids, lens_id=LensId.ARCHITECTURE, status=LensRunStatus.SUCCEEDED)
     g = _finding(ids, "No training signal exists for the filter agent.")
     result = synthesize(
-        findings=[g], runs=[empty_run], embedder=FakeEmbedder({}),
-        adjudicator=FakeAdjudicator(), narrator=EchoNarrator(), id_generator=ids,
-        session_id=new_session_id(SequentialIdGenerator()), brief_version=1,
+        findings=[g],
+        runs=[empty_run],
+        embedder=FakeEmbedder({}),
+        adjudicator=FakeAdjudicator(),
+        narrator=EchoNarrator(),
+        id_generator=ids,
+        session_id=new_session_id(SequentialIdGenerator()),
+        brief_version=1,
     )
     assert any("no findings" in a for a in result.rendered.anomalies)

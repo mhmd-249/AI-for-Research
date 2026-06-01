@@ -35,6 +35,7 @@ from dataclasses import dataclass
 from typing import Literal, Protocol
 
 from ..enums import (
+    ChangeReason,
     ClaimType,
     Confidence,
     LensId,
@@ -53,7 +54,14 @@ from ..models import (
     Synthesis,
     Tension,
 )
-from .clusterer import Embedder, ExcludedFinding, SameClaimAdjudicator, cluster_findings
+from .clusterer import (
+    DEFAULT_CANDIDATE_SIMILARITY_THRESHOLD,
+    AdjudicationVerdict,
+    Embedder,
+    ExcludedFinding,
+    SameClaimAdjudicator,
+    cluster_findings,
+)
 
 # Claim types whose two-cluster splits read as *opposing* positions rather than
 # merely distinct topics: a near-duplicate-embedding pair the adjudicator splits
@@ -108,8 +116,7 @@ class ComputedDeclaredGap:
         """Exploratory-confidence gap with no cross-lens support → collapsed
         into the 'minor / speculative' subsection (story 141)."""
         return (
-            self.strongest_confidence is Confidence.EXPLORATORY
-            and not self.has_cross_lens_support
+            self.strongest_confidence is Confidence.EXPLORATORY and not self.has_cross_lens_support
         )
 
 
@@ -245,9 +252,7 @@ def resolve_winning_findings(findings: Iterable[Finding]) -> list[Finding]:
     synthesis references, so a challenge-driven supersession propagates without
     a stale copy (story 138)."""
     findings = list(findings)
-    superseded: set[FindingId] = {
-        f.supersedes for f in findings if f.supersedes is not None
-    }
+    superseded: set[FindingId] = {f.supersedes for f in findings if f.supersedes is not None}
     return [f for f in findings if f.id not in superseded]
 
 
@@ -284,7 +289,7 @@ def compute_structure(
     runs: Iterable[LensRun],
     embedder: Embedder,
     adjudicator: SameClaimAdjudicator,
-    similarity_threshold: float | None = None,
+    similarity_threshold: float = DEFAULT_CANDIDATE_SIMILARITY_THRESHOLD,
 ) -> ComputedStructure:
     """Compute the authoritative structural layer from typed Findings + LensRuns.
 
@@ -295,19 +300,21 @@ def compute_structure(
     contradiction tension (anti-averaging: it leads, it does not reassure).
     Opposing failure_mode / mechanism_hypothesis splits become opposing-pair
     tensions. A succeeded LensRun with zero findings is a soft anomaly."""
-    cluster_kwargs = {}
-    if similarity_threshold is not None:
-        cluster_kwargs["similarity_threshold"] = similarity_threshold
-
     by_id: dict[FindingId, Finding] = {f.id: f for f in findings}
     gap_findings = [f for f in findings if f.claim_type is ClaimType.GAP]
     other_findings = [f for f in findings if f.claim_type is not ClaimType.GAP]
 
     gap_result = cluster_findings(
-        gap_findings, embedder=embedder, adjudicator=adjudicator, **cluster_kwargs
+        gap_findings,
+        embedder=embedder,
+        adjudicator=adjudicator,
+        similarity_threshold=similarity_threshold,
     )
     other_result = cluster_findings(
-        other_findings, embedder=embedder, adjudicator=adjudicator, **cluster_kwargs
+        other_findings,
+        embedder=embedder,
+        adjudicator=adjudicator,
+        similarity_threshold=similarity_threshold,
     )
 
     agreement_clusters: list[ComputedAgreementCluster] = []
@@ -340,13 +347,10 @@ def compute_structure(
     # both sides are the contradiction-prone claim types. The split is preserved
     # as the tension — never averaged into the cluster (story 137).
     for rec in other_result.adjudications:
-        if rec.verdict.value == "same":
+        if rec.verdict is AdjudicationVerdict.SAME:
             continue
         fa, fb = by_id[rec.finding_a], by_id[rec.finding_b]
-        if (
-            fa.claim_type in _OPPOSING_CLAIM_TYPES
-            and fb.claim_type in _OPPOSING_CLAIM_TYPES
-        ):
+        if fa.claim_type in _OPPOSING_CLAIM_TYPES and fb.claim_type in _OPPOSING_CLAIM_TYPES:
             tensions.append(
                 ComputedTension(
                     finding_refs=(rec.finding_a, rec.finding_b),
@@ -401,14 +405,10 @@ def validate_narration(structure: ComputedStructure, narration: NarrationResult)
     the computed structure. This is what keeps the LLM non-authoritative."""
     computed_agreements = _ref_set(c.finding_refs for c in structure.agreement_clusters)
     if _ref_set(narration.agreement_cluster_refs) != computed_agreements:
-        raise NarrationValidationError(
-            "narration altered agreement cluster membership/counts"
-        )
+        raise NarrationValidationError("narration altered agreement cluster membership/counts")
     computed_gaps = _ref_set(g.finding_refs for g in structure.declared_gaps)
     if _ref_set(narration.declared_gap_refs) != computed_gaps:
-        raise NarrationValidationError(
-            "narration altered declared-gap membership/counts"
-        )
+        raise NarrationValidationError("narration altered declared-gap membership/counts")
 
 
 def _structure_only_narration() -> NarrationResult:
@@ -449,8 +449,7 @@ def _trust_for(members: list[Finding]) -> TrustEncoding:
         verification_markers=markers,
         alarming=VerificationStatus.CONTRADICTED in markers and count >= 2,
         revised_under_challenge_no_evidence=any(
-            m.change_reason is not None and m.change_reason.value == "revised_reconsidered"
-            for m in members
+            m.change_reason is ChangeReason.REVISED_RECONSIDERED for m in members
         ),
     )
 
@@ -539,14 +538,14 @@ def render_synthesis(
 
 def _to_synthesis(
     *,
-    synthesis_id_gen: IdGenerator,
+    id_generator: IdGenerator,
     session_id: SessionId,
     brief_version: int,
     structure: ComputedStructure,
     narration: NarrationResult,
 ) -> Synthesis:
     return Synthesis(
-        id=new_synthesis_id(synthesis_id_gen),
+        id=new_synthesis_id(id_generator),
         session_id=session_id,
         brief_version=brief_version,
         agreement_clusters=tuple(
@@ -586,7 +585,7 @@ def synthesize(
     id_generator: IdGenerator,
     session_id: SessionId,
     brief_version: int,
-    similarity_threshold: float | None = None,
+    similarity_threshold: float = DEFAULT_CANDIDATE_SIMILARITY_THRESHOLD,
 ) -> SynthesisResult:
     """Run the hybrid Round 3 synthesizer end to end.
 
@@ -598,7 +597,6 @@ def synthesize(
     4. Materialize the persisted :class:`Synthesis` (referencing Findings) and
        the readable :class:`RenderedSynthesis`."""
     winners = resolve_winning_findings(findings)
-    runs = list(runs)
     by_id = {f.id: f for f in winners}
 
     structure = compute_structure(
@@ -611,7 +609,7 @@ def synthesize(
     narration, fell_back = _run_narration(narrator, structure)
 
     synthesis = _to_synthesis(
-        synthesis_id_gen=id_generator,
+        id_generator=id_generator,
         session_id=session_id,
         brief_version=brief_version,
         structure=structure,
