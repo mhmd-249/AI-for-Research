@@ -3,10 +3,13 @@ claims and partial replay (single LensRun / verifier check). Story 162-165."""
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Any
 
 from research_council.enums import (
+    ClaimType,
+    Confidence,
     LensId,
     LensRunStatus,
     Mode,
@@ -44,7 +47,7 @@ from research_council.observability import (
     walk_synthesis_claim,
 )
 from research_council.runtime import LensRunSucceeded
-from research_council.runtime.llm import FakeLlmClient, LlmResponse, ToolUseBlock
+from research_council.runtime.llm import FakeLlmClient, LlmResponse, TextBlock, ToolUseBlock
 from research_council.store import InMemorySessionStore
 
 VALID_FIRST_PRINCIPLES: dict[str, Any] = {
@@ -100,8 +103,8 @@ def _seed_finding_with_run_and_traces(
     finding = Finding(
         id=new_finding_id(ids),
         claim_text="The filter agent has a circularity problem.",
-        claim_type="gap",  # type: ignore[arg-type]
-        confidence="load_bearing",  # type: ignore[arg-type]
+        claim_type=ClaimType.GAP,
+        confidence=Confidence.LOAD_BEARING,
         sources=(SourceRef(canonical_id=source.canonical_id),),
         failure_modes_if_wrong="If the filter is cheap, the circularity argument weakens.",
         verification_status=VerificationStatus.UNVERIFIED,
@@ -180,8 +183,8 @@ def test_walk_finding_handles_finding_without_emitting_run(
     orphan = Finding(
         id=new_finding_id(ids),
         claim_text="Background claim.",
-        claim_type="prior_art",  # type: ignore[arg-type]
-        confidence="supporting",  # type: ignore[arg-type]
+        claim_type=ClaimType.PRIOR_ART,
+        confidence=Confidence.SUPPORTING,
         failure_modes_if_wrong="...",
     )
     store.save_finding(orphan)
@@ -295,8 +298,8 @@ def test_reconstruct_lens_run_inputs_round_2_populates_prior_self_and_peers(
     fp_round1_finding = Finding(
         id=new_finding_id(ids),
         claim_text="r1 fp finding",
-        claim_type="gap",  # type: ignore[arg-type]
-        confidence="supporting",  # type: ignore[arg-type]
+        claim_type=ClaimType.GAP,
+        confidence=Confidence.SUPPORTING,
         failure_modes_if_wrong="...",
         round=1,
     )
@@ -318,8 +321,8 @@ def test_reconstruct_lens_run_inputs_round_2_populates_prior_self_and_peers(
     adv_round1_finding = Finding(
         id=new_finding_id(ids),
         claim_text="r1 adv finding",
-        claim_type="failure_mode",  # type: ignore[arg-type]
-        confidence="load_bearing",  # type: ignore[arg-type]
+        claim_type=ClaimType.FAILURE_MODE,
+        confidence=Confidence.LOAD_BEARING,
         failure_modes_if_wrong="...",
         round=1,
     )
@@ -407,8 +410,9 @@ async def test_replay_lens_run_redispatches_against_stored_brief(
     # The replay used the stored brief: that brief's problem_statement appears
     # in the prompt the FakeLlmClient saw.
     assert len(client.requests) == 1
-    sent_user_text = client.requests[0].messages[0].content[0].text  # type: ignore[union-attr]
-    assert brief.problem_statement in sent_user_text
+    first_block = client.requests[0].messages[0].content[0]
+    assert isinstance(first_block, TextBlock)
+    assert brief.problem_statement in first_block.text
     # The replay used a non-tracing FakeLlmClient; the only TraceRecord under
     # this run's id is the one we seeded — no new ones were appended.
     assert len(store.list_traces(run.id)) == 1
@@ -429,7 +433,10 @@ async def test_replay_lens_run_unknown_id_returns_none(
 class _StubVerifier:
     """Captures the (finding, source) it was handed and returns a scripted result."""
 
-    def __init__(self, result_factory: Any) -> None:
+    def __init__(
+        self,
+        result_factory: Callable[[Finding, Source | None], VerificationResult],
+    ) -> None:
         self.result_factory = result_factory
         self.calls: list[tuple[Finding, Source | None]] = []
 
@@ -437,7 +444,7 @@ class _StubVerifier:
         self, finding: Finding, source: Source | None
     ) -> VerificationResult:
         self.calls.append((finding, source))
-        return self.result_factory(finding, source)  # type: ignore[no-any-return]
+        return self.result_factory(finding, source)
 
 
 async def test_replay_verifier_check_runs_verifier_with_finding_and_source(
@@ -476,8 +483,8 @@ async def test_replay_verifier_check_finding_without_source(
     finding = Finding(
         id=new_finding_id(ids),
         claim_text="A claim with no source.",
-        claim_type="mechanism_hypothesis",  # type: ignore[arg-type]
-        confidence="supporting",  # type: ignore[arg-type]
+        claim_type=ClaimType.MECHANISM_HYPOTHESIS,
+        confidence=Confidence.SUPPORTING,
         failure_modes_if_wrong="...",
     )
     store.save_finding(finding)

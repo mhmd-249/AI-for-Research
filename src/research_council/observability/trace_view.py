@@ -46,12 +46,11 @@ def _gather_sources(
     finding: Finding,
     verifications: list[VerificationResult],
 ) -> list[Source]:
+    canonical_ids = [ref.canonical_id for ref in finding.sources] + [
+        v.source_canonical_id for v in verifications if v.source_canonical_id is not None
+    ]
     seen: set[str] = set()
     sources: list[Source] = []
-    canonical_ids = [ref.canonical_id for ref in finding.sources]
-    for verification in verifications:
-        if verification.source_canonical_id is not None:
-            canonical_ids.append(verification.source_canonical_id)
     for canonical in canonical_ids:
         if canonical in seen:
             continue
