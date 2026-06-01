@@ -19,7 +19,7 @@ exceptions. ``run_lens`` does not touch the store; ``persist_outcome`` does.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Literal
+from typing import Literal, assert_never
 
 from pydantic import ValidationError
 
@@ -70,7 +70,18 @@ class LensRunSchemaInvalid:
     status: Literal["schema_invalid"] = "schema_invalid"
 
 
-LensRunOutcome = LensRunSucceeded | LensRunRefused | LensRunSchemaInvalid
+@dataclass(frozen=True)
+class LensRunTimeout:
+    """Outcome variant the controller produces when a LensRun is killed by either
+    the hard wall-clock or the no-progress watchdog (stories 89, 90). ``run_lens``
+    itself never returns this — only the controller's timeout layer does."""
+
+    status: Literal["timeout"] = "timeout"
+
+
+LensRunOutcome = (
+    LensRunSucceeded | LensRunRefused | LensRunSchemaInvalid | LensRunTimeout
+)
 
 
 def _materialize(draft: FindingDraft, id_generator: IdGenerator, round: Round) -> Finding:
@@ -271,7 +282,7 @@ def persist_outcome(
             status=LensRunStatus.REFUSED,
             refusal_reason=outcome.reason,
         )
-    else:
+    elif isinstance(outcome, LensRunSchemaInvalid):
         run = LensRun(
             id=run_id,
             lens_id=lens_id,
@@ -282,6 +293,18 @@ def persist_outcome(
             status=LensRunStatus.SCHEMA_INVALID,
             raw_output=outcome.raw_output,
         )
+    elif isinstance(outcome, LensRunTimeout):
+        run = LensRun(
+            id=run_id,
+            lens_id=lens_id,
+            session_id=session_id,
+            brief_version=brief_version,
+            round=round,
+            dispatch_event_id=dispatch_event_id,
+            status=LensRunStatus.TIMEOUT,
+        )
+    else:
+        assert_never(outcome)
 
     store.save_lens_run(run)
     return run
