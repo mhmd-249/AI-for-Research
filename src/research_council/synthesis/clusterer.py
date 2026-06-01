@@ -34,6 +34,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 from enum import StrEnum
+from itertools import combinations
 from typing import Protocol
 
 from ..ids import FindingId
@@ -129,9 +130,10 @@ class ClusterResult:
 def _exclusion_reason(claim_text: str) -> str | None:
     if claim_text == "":
         return EXCLUSION_EMPTY
-    if not claim_text.strip():
+    stripped = claim_text.strip()
+    if not stripped:
         return EXCLUSION_WHITESPACE
-    if len(claim_text.strip()) < MIN_CLAIM_TEXT_LENGTH:
+    if len(stripped) < MIN_CLAIM_TEXT_LENGTH:
         return EXCLUSION_TOO_SHORT
     return None
 
@@ -140,16 +142,11 @@ def _exclusion_reason(claim_text: str) -> str | None:
 
 
 def _cosine_similarity(a: list[float], b: list[float]) -> float:
-    """Cosine over two equal- or unequal-length vectors. Shorter vectors are
-    treated as zero-padded; mismatched dimensions never raise (test fakes use
-    unique-index one-hots for unrelated texts, deliberately differing in
-    length). A zero-norm vector yields 0.0."""
-    width = max(len(a), len(b))
-    dot = 0.0
-    for i in range(width):
-        ai = a[i] if i < len(a) else 0.0
-        bi = b[i] if i < len(b) else 0.0
-        dot += ai * bi
+    """Cosine over two equal- or unequal-length vectors. Extra trailing entries
+    in the longer vector contribute zero to the dot product, so mismatched
+    dimensions never raise (test fakes use unique-index one-hots for unrelated
+    texts, deliberately differing in length). A zero-norm vector yields 0.0."""
+    dot = sum(x * y for x, y in zip(a, b, strict=False))
     norm_a = math.sqrt(sum(x * x for x in a))
     norm_b = math.sqrt(sum(x * x for x in b))
     if norm_a == 0.0 or norm_b == 0.0:
@@ -216,26 +213,25 @@ def cluster_findings(
     adjudications: list[AdjudicationRecord] = []
     uf = _UnionFind([f.id for f in valid])
 
-    for i in range(len(valid)):
-        for j in range(i + 1, len(valid)):
-            fa, fb = valid[i], valid[j]
-            similarity = _cosine_similarity(embeddings[fa.id], embeddings[fb.id])
-            if similarity < similarity_threshold:
-                continue  # below-threshold pairs are never sent to the adjudicator
-            verdict = adjudicator.adjudicate(fa, fb)
-            adjudications.append(
-                AdjudicationRecord(
-                    finding_a=fa.id,
-                    finding_b=fb.id,
-                    similarity=similarity,
-                    verdict=verdict,
-                )
+    # combinations(valid, 2) yields each unordered pair once, in input order.
+    for fa, fb in combinations(valid, 2):
+        similarity = _cosine_similarity(embeddings[fa.id], embeddings[fb.id])
+        if similarity < similarity_threshold:
+            continue  # below-threshold pairs are never sent to the adjudicator
+        verdict = adjudicator.adjudicate(fa, fb)
+        adjudications.append(
+            AdjudicationRecord(
+                finding_a=fa.id,
+                finding_b=fb.id,
+                similarity=similarity,
+                verdict=verdict,
             )
-            if verdict is AdjudicationVerdict.SAME:
-                uf.union(fa.id, fb.id)
-            # SPLIT-ON-UNCERTAINTY: DIFFERENT and UNCERTAIN both leave the pair
-            # in separate components. Story 134: the visible error beats the
-            # invisible one.
+        )
+        if verdict is AdjudicationVerdict.SAME:
+            uf.union(fa.id, fb.id)
+        # SPLIT-ON-UNCERTAINTY: DIFFERENT and UNCERTAIN both leave the pair
+        # in separate components. Story 134: the visible error beats the
+        # invisible one.
 
     # Group findings by their union-find root, preserving input order both
     # across clusters and within each cluster's member list.
