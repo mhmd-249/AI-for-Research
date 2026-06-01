@@ -28,8 +28,23 @@ USER ${AGENT_UID}:${AGENT_GID}
 # Install Claude Code CLI
 RUN curl -fsSL https://claude.ai/install.sh | bash
 
-# Add Claude to PATH
+# Add Claude (and uv, installed below) to PATH
 ENV PATH="/home/agent/.local/bin:$PATH"
+
+# Install uv — the Python package/venv manager. uv also provisions the pinned
+# Python toolchain (see .python-version / pyproject requires-python), so no
+# system Python is needed. The implement/merge prompts run `make test` /
+# `make typecheck`, which shell out to `uv run pytest` / `uv run mypy`.
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Build the project venv at a container-only path OUTSIDE the bind-mounted
+# worktree. Sandcastle bind-mounts the repo at /home/agent/workspace, so a
+# default ./.venv would be written back onto the macOS host, where its
+# Linux-aarch64 python symlinks are broken — and the VS Code Python and
+# Black-formatter extensions then error on every refresh/format. Pointing uv
+# at /home/agent/.venv keeps the venv inside the container and leaves the
+# host .venv untouched.
+ENV UV_PROJECT_ENVIRONMENT=/home/agent/.venv
 
 WORKDIR /home/agent
 

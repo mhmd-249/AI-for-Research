@@ -8,7 +8,7 @@ For each branch:
 
 1. Run `git merge <branch> --no-edit`
 2. If there are merge conflicts, resolve them intelligently by reading both sides and choosing the correct resolution
-3. After resolving conflicts, run `npm run typecheck` and `npm run test` to verify everything works
+3. After resolving conflicts, run `make typecheck` and `make test` to verify everything works (Python project managed with `uv`; run `uv sync` first if `.venv` is missing)
 4. If tests fail, fix the issues before proceeding to the next branch
 
 After all branches are merged, make a single commit summarizing the merge.

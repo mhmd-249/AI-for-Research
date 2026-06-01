@@ -44,15 +44,16 @@ const planSchema = z.object({
 const MAX_ITERATIONS = 10;
 
 // Hooks run inside the sandbox before the agent starts each iteration.
-// npm install ensures the sandbox always has fresh dependencies.
+// `uv sync` provisions the Python venv (and pinned toolchain) from the committed
+// uv.lock, so the sandbox always has fresh, reproducible dependencies.
 const hooks = {
-  sandbox: { onSandboxReady: [{ command: "npm install" }] },
+  sandbox: { onSandboxReady: [{ command: "uv sync" }] },
 };
 
-// Copy node_modules from the host into the worktree before each sandbox
-// starts. Avoids a full npm install from scratch; the hook above handles
-// platform-specific binaries and any packages added since the last copy.
-const copyToWorktree = ["node_modules"];
+// Nothing host-specific to copy in: the Python .venv is platform-specific
+// (macOS host vs. Linux sandbox), so it is rebuilt by `uv sync` above rather
+// than copied. uv's download cache keeps that fast.
+const copyToWorktree: string[] = [];
 
 // ---------------------------------------------------------------------------
 // Main loop
@@ -78,7 +79,7 @@ for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
     // not write code. (Structured output requires maxIterations: 1.)
     maxIterations: 1,
     // Opus for planning: dependency analysis benefits from deeper reasoning.
-    agent: sandcastle.claudeCode("claude-opus-4-7"),
+    agent: sandcastle.claudeCode("claude-opus-4-8"),
     promptFile: "./.sandcastle/plan-prompt.md",
     // Extract and validate the <plan> JSON into a typed object. Throws
     // StructuredOutputError if the tag is missing, the JSON is malformed, or
@@ -125,7 +126,7 @@ for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
         const implement = await sandbox.run({
           name: "implementer",
           maxIterations: 100,
-          agent: sandcastle.claudeCode("claude-opus-4-7"),
+          agent: sandcastle.claudeCode("claude-opus-4-8"),
           promptFile: "./.sandcastle/implement-prompt.md",
           promptArgs: {
             TASK_ID: issue.id,
@@ -210,7 +211,7 @@ for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
     sandbox: docker(),
     name: "merger",
     maxIterations: 1,
-    agent: sandcastle.claudeCode("claude-opus-4-7"),
+    agent: sandcastle.claudeCode("claude-opus-4-8"),
     promptFile: "./.sandcastle/merge-prompt.md",
     promptArgs: {
       // A markdown list of branch names, one per line.

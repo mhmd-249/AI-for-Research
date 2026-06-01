@@ -35,7 +35,12 @@ If applicable, use RGR to complete the task.
 
 # FEEDBACK LOOPS
 
-Before committing, run `npm run typecheck` and `npm run test` to ensure the tests pass.
+This is a Python project (Python 3.12, managed with `uv`). Dependencies are
+declared in `pyproject.toml`; run `uv sync` first if `.venv` is missing.
+
+Before committing, run `make typecheck` and `make test` to ensure mypy is clean
+and the tests pass (`make typecheck` runs `uv run mypy`, `make test` runs
+`uv run pytest`). Run `make lint` (`uv run ruff check .`) to catch style issues.
 
 # COMMIT
 
