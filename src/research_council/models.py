@@ -239,6 +239,11 @@ class LensRun(FrozenModel):
     refusal_reason: str | None = None
     raw_output: str | None = None  # preserved when status == schema_invalid (story 91)
     reused_from_version: int | None = None  # set when re-pointed during refinement (story 121)
+    # Prose sibling-impact flags carried only by a scoped challenge LensRun
+    # (story 112): findings this run believes are now undermined but was not asked
+    # to revise. Surfaced as open_questions-style synthesis tensions, never an
+    # auto-edit and never a structural depends_on (story 113).
+    sibling_impact_flags: tuple[str, ...] = Field(default_factory=tuple)
 
 
 # --- Challenge --------------------------------------------------------------

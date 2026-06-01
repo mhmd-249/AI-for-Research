@@ -250,16 +250,29 @@ def resolve_winning_findings(findings: Iterable[Finding]) -> list[Finding]:
     """Drop superseded Findings (story 111): a Finding is superseded if some
     other Finding points to it via ``supersedes``. The winners are what
     synthesis references, so a challenge-driven supersession propagates without
-    a stale copy (story 138)."""
+    a stale copy (story 138).
+
+    A ``withdrawn`` challenge response (story 108) is itself dropped too: it
+    supersedes the challenged Finding (so the predecessor leaves the winning
+    set) but is a tombstone, not a replacement — the claim is gone, not revised.
+    Both records stay persisted for audit; neither renders."""
     findings = list(findings)
     superseded: set[FindingId] = {f.supersedes for f in findings if f.supersedes is not None}
-    return [f for f in findings if f.id not in superseded]
+    return [
+        f
+        for f in findings
+        if f.id not in superseded and f.change_reason is not ChangeReason.WITHDRAWN
+    ]
 
 
 # --- small helpers ----------------------------------------------------------
 
 
 def _strongest(members: list[Finding]) -> Confidence:
+    # A prose-only sibling-impact tension carries no member Findings (story 113);
+    # fall back to the lowest tier rather than crashing on an empty max().
+    if not members:
+        return Confidence.EXPLORATORY
     return max(members, key=lambda m: _CONFIDENCE_RANK[m.confidence]).confidence
 
 
@@ -300,6 +313,7 @@ def compute_structure(
     contradiction tension (anti-averaging: it leads, it does not reassure).
     Opposing failure_mode / mechanism_hypothesis splits become opposing-pair
     tensions. A succeeded LensRun with zero findings is a soft anomaly."""
+    runs = list(runs)  # iterated more than once (sibling flags + zero-finding anomaly)
     by_id: dict[FindingId, Finding] = {f.id: f for f in findings}
     gap_findings = [f for f in findings if f.claim_type is ClaimType.GAP]
     other_findings = [f for f in findings if f.claim_type is not ClaimType.GAP]
@@ -359,6 +373,21 @@ def compute_structure(
                         "point; preserved as a split, not averaged."
                     ),
                     source=TensionSource.OPPOSING_PAIR,
+                )
+            )
+
+    # Sibling-impact flags from scoped challenge LensRuns become open_questions-
+    # style tensions (story 112): an orphaned premise the lens flagged but was not
+    # asked to revise surfaces as a visible tension, never a silently stale
+    # Finding. Prose-only — no member Findings (story 113: no structural
+    # depends_on); the runtime materializes these onto the scoped run.
+    for run in runs:
+        for flag in run.sibling_impact_flags:
+            tensions.append(
+                ComputedTension(
+                    finding_refs=(),
+                    description=flag,
+                    source=TensionSource.SIBLING_IMPACT_FLAG,
                 )
             )
 

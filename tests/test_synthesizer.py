@@ -380,6 +380,75 @@ def test_superseded_finding_is_dropped_synthesis_references_winner(
     assert old.id not in {f.id for f in winners}
 
 
+def test_withdrawn_finding_and_its_predecessor_both_drop_out(
+    ids: SequentialIdGenerator,
+) -> None:
+    """A withdrawn challenge response (story 108/110) supersedes the challenged
+    Finding AND is itself excluded from the winning set: the claim is gone, not
+    replaced. Both records stay persisted for audit (story 111)."""
+    old = _finding(ids, "The filter agent has a circularity problem.")
+    tombstone = _finding(
+        ids,
+        "I withdraw the circularity claim.",
+        supersedes=old.id,
+        change_reason=ChangeReason.WITHDRAWN,
+    )
+    winners = resolve_winning_findings([old, tombstone])
+    assert winners == []
+
+
+# --- sibling-impact flags surface as tensions (story 112) -------------------
+
+
+def test_sibling_impact_flag_becomes_tension(ids: SequentialIdGenerator) -> None:
+    g = _finding(ids, "No training signal exists for the filter agent.")
+    scoped_run = _run(
+        ids,
+        lens_id=LensId.ADVERSARIAL,
+        status=LensRunStatus.SUCCEEDED,
+        finding_ids=(g.id,),
+    ).model_copy(
+        update={
+            "sibling_impact_flags": (
+                "I withdrew F; this likely undermines my earlier point about G.",
+            )
+        }
+    )
+    structure = compute_structure(
+        findings=[g],
+        runs=[scoped_run],
+        embedder=FakeEmbedder({}),
+        adjudicator=FakeAdjudicator(),
+    )
+    sibling = [
+        t for t in structure.tensions if t.source is TensionSource.SIBLING_IMPACT_FLAG
+    ]
+    assert len(sibling) == 1
+    assert "undermines my earlier point about G" in sibling[0].description
+
+
+def test_synthesize_renders_sibling_impact_tension(ids: SequentialIdGenerator) -> None:
+    g = _finding(ids, "No training signal exists for the filter agent.")
+    scoped_run = _run(
+        ids,
+        lens_id=LensId.ADVERSARIAL,
+        status=LensRunStatus.SUCCEEDED,
+        finding_ids=(g.id,),
+    ).model_copy(update={"sibling_impact_flags": ("orphaned premise about G.",)})
+    result = synthesize(
+        findings=[g],
+        runs=[scoped_run],
+        embedder=FakeEmbedder({}),
+        adjudicator=FakeAdjudicator(),
+        narrator=EchoNarrator(),
+        id_generator=ids,
+        session_id=new_session_id(SequentialIdGenerator()),
+        brief_version=1,
+    )
+    descriptions = [item.description for item in result.rendered.primary]
+    assert "orphaned premise about G." in descriptions
+
+
 # --- narration re-validation (story 130/132) --------------------------------
 
 
