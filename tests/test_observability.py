@@ -168,6 +168,33 @@ def test_walk_finding_reconstructs_full_backward_chain(
     assert trace.verifications == [verification]
     assert trace.sources == [source]
     assert trace.traces == traces
+    assert trace.verification_traces == []  # no verifier I/O seeded
+
+
+def test_walk_finding_surfaces_verifier_trace_records(
+    store: InMemorySessionStore, ids: SequentialIdGenerator, source: Source
+) -> None:
+    # The PRD chain ends at "VerificationResult -> Source text -> raw
+    # TraceRecords": the verifier's own raw I/O is keyed to the
+    # VerificationResult id (parallel to how a LensRun keys to run.id).
+    session, brief = _seed_session_with_brief(store, ids)
+    _f, _run, verification, _traces = _seed_finding_with_run_and_traces(
+        store, ids, session, brief, source
+    )
+    verifier_trace = TraceRecord(
+        id=new_trace_record_id(ids),
+        caller_ref=verification.id,
+        prompt="SYSTEM: verify... USER: claim...",
+        completion="verdict(...)",
+        model="claude-opus-4-8",
+        timestamp=datetime(2026, 6, 1, tzinfo=UTC),
+    )
+    store.append_trace(verifier_trace)
+
+    trace = walk_finding(store, store, _f.id)
+
+    assert trace is not None
+    assert trace.verification_traces == [verifier_trace]
 
 
 def test_walk_finding_returns_none_for_unknown_id(
@@ -198,6 +225,7 @@ def test_walk_finding_handles_finding_without_emitting_run(
     assert trace.verifications == []
     assert trace.sources == []
     assert trace.traces == []
+    assert trace.verification_traces == []
 
 
 def test_walk_synthesis_claim_walks_all_finding_refs(

@@ -39,6 +39,7 @@ class FindingTrace:
     verifications: list[VerificationResult]
     sources: list[Source]  # sources referenced by the Finding and its verifications
     traces: list[TraceRecord]  # raw I/O records keyed to the emitting LensRun
+    verification_traces: list[TraceRecord]  # raw I/O keyed to each VerificationResult
 
 
 def _gather_sources(
@@ -86,6 +87,13 @@ def walk_finding(
     verifications = store.list_verification_results_for_finding(finding_id)
     sources = _gather_sources(store, finding, verifications)
 
+    # The verifier keys its raw I/O to the VerificationResult id it produced
+    # (parallel to the LensRun keying to run.id) — completing the PRD chain's
+    # "VerificationResult -> ... -> raw TraceRecords" tail.
+    verification_traces: list[TraceRecord] = []
+    for verification in verifications:
+        verification_traces.extend(traces.list_traces(verification.id))
+
     return FindingTrace(
         finding=finding,
         emitting_run=emitting_run,
@@ -93,6 +101,7 @@ def walk_finding(
         verifications=verifications,
         sources=sources,
         traces=trace_records,
+        verification_traces=verification_traces,
     )
 
 
