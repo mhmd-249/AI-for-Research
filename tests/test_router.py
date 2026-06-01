@@ -142,7 +142,7 @@ async def test_reasoning_is_llm_derived_not_boilerplate(brief: Brief) -> None:
 # --- panel_constraints override ---------------------------------------------
 
 
-async def test_panel_constraints_override_LLM_panel(brief: Brief) -> None:
+async def test_panel_constraints_override_llm_panel(brief: Brief) -> None:
     # User has pre-specified a narrow panel of two lenses; even if the LLM
     # proposes more, the proposal's panel is exactly the constraints.
     constrained = brief.model_copy(
