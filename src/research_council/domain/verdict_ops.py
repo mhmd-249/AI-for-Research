@@ -51,11 +51,13 @@ class ResolutionStatus(StrEnum):
 
 @dataclass(frozen=True)
 class ResolutionDiagnostic:
-    """Surfaces an ambiguous or no-match excerpt so the engineer can refine it.
+    """Surfaces the outcome of a ref the resolver actively matched this pass.
 
-    For RESOLVED refs, the cache (``resolved_finding_ids``) already carries the
-    answer — but a diagnostic is still emitted so the caller can audit every
-    resolution decision in one pass.
+    Emitted for every ref the resolver matched this pass — RESOLVED (the cache
+    was just populated), AMBIGUOUS, and NO_MATCH alike — so the caller can audit
+    each decision and refine ambiguous/no-match excerpts. Refs that arrived
+    already carrying ``resolved_finding_ids`` are treated as cached, skipped
+    without re-matching, and emit no diagnostic.
     """
 
     ref_kind: Literal["validated", "invalidated"]
