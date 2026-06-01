@@ -274,6 +274,17 @@ class SqliteSessionStore:
         ).fetchall()
         return [_load(LensRun, r[0]) for r in rows]
 
+    def find_lens_run_by_finding(self, finding_id: FindingId) -> LensRun | None:
+        # finding_ids live inside the JSON payload, so we scan runs and test
+        # membership — the reverse of the canonical LensRun.finding_ids -> Finding
+        # direction. Returns None for orphan Findings (no emitting run).
+        rows = self._conn.execute("SELECT payload FROM lens_runs").fetchall()
+        for (payload,) in rows:
+            run = _load(LensRun, payload)
+            if finding_id in run.finding_ids:
+                return run
+        return None
+
     # Finding ---------------------------------------------------------------
     def save_finding(self, finding: Finding) -> None:
         self._conn.execute(
