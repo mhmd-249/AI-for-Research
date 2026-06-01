@@ -22,7 +22,7 @@ from research_council.runtime import (
     run_lens,
 )
 from research_council.runtime.llm import FakeLlmClient, LlmResponse, ToolUseBlock
-from research_council.store import InMemorySessionStore
+from research_council.store import SessionStoreAndTrace
 
 # --- helpers ----------------------------------------------------------------
 
@@ -228,7 +228,7 @@ async def test_granted_tool_dispatched_ungranted_refused(
 
 
 async def test_every_llm_call_emits_a_trace_record(
-    brief: Brief, ids: SequentialIdGenerator, store: InMemorySessionStore
+    brief: Brief, ids: SequentialIdGenerator, store: SessionStoreAndTrace
 ) -> None:
     fixed = datetime(2026, 6, 1, tzinfo=UTC)
     bad = {**VALID_FIRST_PRINCIPLES, "disagreements_with_my_own_framing": []}
@@ -249,7 +249,7 @@ async def test_every_llm_call_emits_a_trace_record(
 
 
 async def test_tracer_spine_persists_valid_output(
-    brief: Brief, ids: SequentialIdGenerator, store: InMemorySessionStore
+    brief: Brief, ids: SequentialIdGenerator, store: SessionStoreAndTrace
 ) -> None:
     client = FakeLlmClient([emit(VALID_FIRST_PRINCIPLES)])
     outcome = await run_lens(inputs=fp_inputs(brief), client=client, id_generator=ids)

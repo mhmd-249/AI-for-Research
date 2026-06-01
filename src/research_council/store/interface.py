@@ -119,3 +119,9 @@ class TraceSink(Protocol):
 
     def append_trace(self, record: TraceRecord) -> None: ...
     def list_traces(self, caller_ref: str) -> list[TraceRecord]: ...
+
+
+class SessionStoreAndTrace(SessionStore, TraceSink, Protocol):
+    """Convenience protocol for stores that satisfy both ``SessionStore`` and
+    ``TraceSink`` (both v0 implementations do; tests use this where the parameter
+    needs to accept either store implementation interchangeably)."""
