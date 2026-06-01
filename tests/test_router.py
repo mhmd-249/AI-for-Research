@@ -154,6 +154,33 @@ async def test_panel_constraints_override_LLM_panel(brief: Brief) -> None:
     assert proposal.panel == (LensId.PRIOR_ART, LensId.ADVERSARIAL)
 
 
+async def test_panel_constraints_reconcile_included_flags_with_panel(brief: Brief) -> None:
+    # When constraints override the LLM's panel, each rationale's `included`
+    # flag must reflect actual panel membership — otherwise Screen 2 would show
+    # a lens with "included" reasoning that isn't dispatched. The LLM's reasoning
+    # TEXT is preserved as narration; only the boolean is reconciled.
+    constrained = brief.model_copy(
+        update={"panel_constraints": (LensId.PRIOR_ART, LensId.ADVERSARIAL)}
+    )
+    distinctive = "Architecture is the load-bearing axis here."
+    rationales = _full_rationales(
+        included=_DEEP_DIVE_PANEL,  # LLM proposes a wide panel...
+        reasoning_by_lens={LensId.ARCHITECTURE: distinctive},
+    )
+    client = FakeLlmClient([emit_panel(rationales)])
+    proposal = await propose_panel(constrained, client=client)
+
+    # The invariant that holds in the unconstrained path must also hold here.
+    included_in_rationales = {r.lens_id for r in proposal.rationales if r.included}
+    assert included_in_rationales == set(proposal.panel) == {LensId.PRIOR_ART, LensId.ADVERSARIAL}
+
+    # ARCHITECTURE was included by the LLM but excluded by the constraints: its
+    # flag flips to False, but its reasoning text is preserved as narration.
+    architecture = next(r for r in proposal.rationales if r.lens_id is LensId.ARCHITECTURE)
+    assert architecture.included is False
+    assert architecture.reasoning == distinctive
+
+
 async def test_panel_constraints_still_produce_reasoning_for_all_nine(brief: Brief) -> None:
     # Even with constraints, reasoning is produced for all nine so the user can
     # see why the constrained set excludes the others.

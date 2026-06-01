@@ -160,9 +160,15 @@ def _materialize(
     rationales = tuple(draft.rationales)
     if panel_constraints is not None:
         # Story 86 acceptance: constraints override hybrid routing. The LLM
-        # reasoning is preserved as narration, but the panel is exactly the
-        # user-pre-specified set.
+        # reasoning TEXT is preserved as narration, but the panel is exactly the
+        # user-pre-specified set — and each rationale's `included` flag is
+        # reconciled to match, so a lens the LLM picked but the constraints drop
+        # reads as excluded on Screen 2 (with its reasoning intact).
         panel = tuple(panel_constraints)
+        constrained = set(panel_constraints)
+        rationales = tuple(
+            r.model_copy(update={"included": r.lens_id in constrained}) for r in rationales
+        )
     else:
         panel = tuple(r.lens_id for r in rationales if r.included)
     return PanelProposal(panel=panel, rationales=rationales)
