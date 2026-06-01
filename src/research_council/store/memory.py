@@ -121,6 +121,12 @@ class InMemorySessionStore:
             if r.session_id == session_id and r.lens_id == lens_id and r.brief_version == version
         ]
 
+    def find_lens_run_by_finding(self, finding_id: FindingId) -> LensRun | None:
+        for run in self._lens_runs.values():
+            if finding_id in run.finding_ids:
+                return _clone(run)
+        return None
+
     # Finding ---------------------------------------------------------------
     def save_finding(self, finding: Finding) -> None:
         self._findings[finding.id] = _clone(finding)

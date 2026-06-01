@@ -65,6 +65,16 @@ class SessionStore(Protocol):
         self, session_id: SessionId, lens_id: LensId, version: int
     ) -> list[LensRun]: ...
 
+    def find_lens_run_by_finding(self, finding_id: FindingId) -> LensRun | None:
+        """Reverse lookup: the LensRun that emitted ``finding_id``, or None.
+
+        The backward trace-walk (story 162) needs this to climb from a Finding
+        to the LensRun that produced it; ``Finding`` carries no run pointer
+        because the canonical direction is ``LensRun.finding_ids -> Finding``.
+        Returns ``None`` for orphan Findings (e.g. background claims attached
+        to a Brief rather than emitted by a run)."""
+        ...
+
     # Finding ---------------------------------------------------------------
     def save_finding(self, finding: Finding) -> None: ...
     def get_finding(self, finding_id: FindingId) -> Finding | None:
