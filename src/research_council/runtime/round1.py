@@ -142,22 +142,22 @@ def _summarize_for_synthesis(runs: tuple[LensRun, ...]) -> str:
     if schema_invalid:
         parts.append(
             f"{len(schema_invalid)} ({', '.join(schema_invalid)}) failed schema "
-            "validation after retry — excluded from synthesis. "
-            "Raw output preserved for debugging."
+            "validation after retry — excluded from synthesis "
+            "(raw output preserved for debugging)"
         )
 
     timed_out = _names_with_status(runs, LensRunStatus.TIMEOUT)
     if timed_out:
         parts.append(
             f"{len(timed_out)} ({', '.join(timed_out)}) timed out "
-            "— excluded from synthesis."
+            "— excluded from synthesis"
         )
 
     refused = _names_with_status(runs, LensRunStatus.REFUSED)
     if refused:
         parts.append(
             f"{len(refused)} ({', '.join(refused)}) refused "
-            "— excluded from synthesis."
+            "— excluded from synthesis"
         )
 
     return "; ".join(parts) + "."
