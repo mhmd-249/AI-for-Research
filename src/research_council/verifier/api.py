@@ -164,14 +164,12 @@ class ClaimVerifier:
         # Mistagged: lens tried to dodge verification by mistagging an empirical
         # claim. Story 35 — caught and surfaced as verifier_error (parse_error
         # is the closest sub-reason: a structurally-invalid claim envelope).
+        base = "claim text does not match its declared unverifiable-by-design tag"
         return self._error_result(
             claim,
             source_canonical_id=None,
             sub_reason=VerifierErrorSubReason.PARSE_ERROR,
-            evidence=(
-                "claim text does not match its declared unverifiable-by-design tag: "
-                f"{tag.reasoning}"
-            ),
+            evidence=f"{base}: {tag.reasoning}" if tag.reasoning else base,
         )
 
     # -- source-bearing path ----------------------------------------------
@@ -248,15 +246,13 @@ class ClaimVerifier:
             # Stage 2 fail: paper resolved but doesn't address the claim. Distinct
             # from Stage 1's "citation doesn't resolve" by virtue of carrying a
             # source_canonical_id on the result (story 34).
+            base = "paper resolved but no passages bearing on the claim"
             return self._build_result(
                 claim=claim,
                 status=VerificationStatus.SOURCE_NOT_FOUND,
                 source_canonical_id=canonical,
                 quoted_passage=None,
-                evidence=(
-                    "paper resolved but no passages bearing on the claim: "
-                    f"{locality.note}"
-                ).strip(),
+                evidence=f"{base}: {locality.note}" if locality.note else base,
                 error_sub_reason=None,
             )
 
@@ -432,7 +428,7 @@ class ClaimVerifier:
     ) -> VerificationResult:
         # Story 37: verifier_error is never silently converted to verified.
         # This is the single chokepoint — assert at the construction boundary.
-        assert not (status == VerificationStatus.VERIFIED and error_sub_reason is not None), (
+        assert not (status is VerificationStatus.VERIFIED and error_sub_reason is not None), (
             "verifier_error must never collapse into verified (story 37)"
         )
         return VerificationResult(
