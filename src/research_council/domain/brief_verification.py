@@ -129,13 +129,13 @@ class BriefVerificationStream:
         has run in parallel with verification, so this typically returns after
         a short tail and only a handful of tasks remain pending.
         """
-        pending: list[tuple[FindingId, asyncio.Task[VerificationResult]]] = [
-            (fid, task) for fid, task in self._tasks.items() if fid not in self._results
-        ]
+        pending: dict[FindingId, asyncio.Task[VerificationResult]] = {
+            fid: task for fid, task in self._tasks.items() if fid not in self._results
+        }
         if not pending:
             return
-        results = await asyncio.gather(*(task for _, task in pending))
-        for (fid, _), res in zip(pending, results, strict=True):
+        results = await asyncio.gather(*pending.values())
+        for fid, res in zip(pending, results, strict=True):
             self._results[fid] = res
 
     # --- Problem surfacing -------------------------------------------------
@@ -178,18 +178,14 @@ class BriefVerificationStream:
             res = self._results.get(f.id)
             if res is None:
                 out.append(f)
-                continue
-            if res.status in _PROBLEM_STATUSES:
-                if f.id in self._accepted_unverified:
-                    out.append(
-                        f.model_copy(
-                            update={"verification_status": VerificationStatus.UNVERIFIED}
-                        )
-                    )
-                else:
-                    out.append(f)
-                continue
-            out.append(f.model_copy(update={"verification_status": res.status}))
+            elif res.status not in _PROBLEM_STATUSES:
+                out.append(f.model_copy(update={"verification_status": res.status}))
+            elif f.id in self._accepted_unverified:
+                out.append(
+                    f.model_copy(update={"verification_status": VerificationStatus.UNVERIFIED})
+                )
+            else:
+                out.append(f)
         return tuple(out)
 
 
