@@ -53,13 +53,18 @@ DEFAULT_FAILURE_HALT_THRESHOLD = 0.70
 class Round1Result:
     """The controller's output for one Round 1 dispatch.
 
-    ``runs`` is in panel order. ``halted`` is True when the non-succeeded ratio
-    strictly exceeds ``failure_halt_threshold``; the synthesis layer must respect
-    this before advancing to Round 2.
+    ``runs`` is in panel order so the synthesis layer can join against the
+    panel. ``runs_in_completion_order`` is the same set in the order each
+    Round 1 task finished — Round 2's anonymization scheme (story 97) labels
+    peers ``Lens A``, ``Lens B``, ... in that order, deliberately non-semantic.
+    ``halted`` is True when the non-succeeded ratio strictly exceeds
+    ``failure_halt_threshold``; the synthesis layer must respect this before
+    advancing to Round 2.
     """
 
     dispatch_event: DispatchEvent
     runs: tuple[LensRun, ...]
+    runs_in_completion_order: tuple[LensRun, ...]
     halted: bool
     halt_message: str | None
     synthesis_input_summary: str
@@ -201,11 +206,17 @@ async def run_round_1(
 
     dispatch_event_id = new_dispatch_event_id(id_generator)
 
+    # asyncio is cooperative, so a plain list capturing each task's terminal
+    # state in arrival order is race-free — and lets us return runs both in
+    # panel order (for synthesis joins) and in completion order (for Round 2's
+    # anonymization, story 97).
+    completion_order: list[LensRun] = []
+
     async def _run_one(lens_id: LensId) -> LensRun:
         outcome = await _run_with_timeouts(
             tasks[lens_id], hard_timeout_seconds, no_progress_timeout_seconds
         )
-        return persist_outcome(
+        run = persist_outcome(
             store,
             outcome=outcome,
             lens_id=lens_id,
@@ -215,6 +226,8 @@ async def run_round_1(
             id_generator=id_generator,
             dispatch_event_id=dispatch_event_id,
         )
+        completion_order.append(run)
+        return run
 
     runs = tuple(await asyncio.gather(*(_run_one(lens_id) for lens_id in panel)))
 
@@ -234,6 +247,7 @@ async def run_round_1(
     return Round1Result(
         dispatch_event=dispatch_event,
         runs=runs,
+        runs_in_completion_order=tuple(completion_order),
         halted=halted,
         halt_message=halt_message,
         synthesis_input_summary=summary,

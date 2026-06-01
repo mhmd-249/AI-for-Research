@@ -1,11 +1,14 @@
 """The nine v0 lenses as static configuration (stories 54-63).
 
 ``allowed_claim_types`` is ``None`` for lenses whose claim types are guided only
-by prompt + eval. It is a hard, code-enforced set only for the first-principles
-lens, whose restriction to mechanism_hypothesis + gap is called "non-negotiable"
-in story 63. Tool grants for the training-data, deployment, and architecture
-lenses are not specified in the roster stories and default to none until their
-build slice; the grants below encode exactly what stories 55-63 state.
+by prompt + eval. It is a hard, code-enforced set for the two lenses where the
+PRD names specific claim types as the lens's output: first-principles (story 63,
+``mechanism_hypothesis`` + ``gap`` only, explicitly "non-negotiable") and
+mechanistic-interpretability (story 58, ``mechanism_hypothesis`` + ``failure_mode``
+only — explicitly "not prior_art"). Tool grants for the training-data, deployment,
+and architecture lenses are not specified in the roster stories and default to
+none until their build slice; the grants below encode exactly what stories 55-63
+state.
 """
 
 from __future__ import annotations
@@ -28,6 +31,13 @@ class LensConfig(FrozenModel):
     role: str
     tool_access: list[ToolName] = Field(default_factory=list)
     allowed_claim_types: list[ClaimType] | None = None
+    # Round-specific instructions surfaced in the system prompt instead of the
+    # generic ``characteristic_move`` when set. Used by the adversarial lens
+    # (story 56) and Round 2 prior-art (story 95) — both have meaningfully
+    # different jobs across rounds. ``None`` means "use ``characteristic_move``
+    # as-is".
+    round_1_focus: str | None = None
+    round_2_focus: str | None = None
 
 
 ROSTER: dict[LensId, LensConfig] = {
@@ -40,17 +50,35 @@ ROSTER: dict[LensId, LensConfig] = {
         ),
         role="grounder",
         tool_access=[ToolName.VERIFIER_QUERY, ToolName.SOURCE_FETCH],
+        # Story 95: Round 2 prior-art identifies prior work relevant to the
+        # council's emerging analysis, not only the original brief.
+        round_2_focus=(
+            "In Round 2, identify prior art relevant to the council's emerging analysis (the "
+            "anonymized peer outputs), not only the original brief."
+        ),
     ),
     LensId.ADVERSARIAL: LensConfig(
         id=LensId.ADVERSARIAL,
         name="Adversarial",
         frame="This proposal is wrong; my job is to find the strongest reason why.",
         characteristic_move=(
-            "Round 1: generate failure_mode findings against the proposed solution. "
-            "Round 2: generate failure_mode findings against the emerging Round 1 consensus."
+            "Generate the strongest failure_mode findings you can support against your assigned "
+            "target."
         ),
         role="critic",
         tool_access=[ToolName.SOURCE_FETCH],
+        # Story 56: distinct jobs across rounds. The round-specific focus replaces
+        # the generic move in the system prompt so the lens sees only the relevant
+        # target.
+        round_1_focus=(
+            "In Round 1, your target is the researcher's proposed solution. Generate "
+            "failure_mode findings that attack the proposal itself."
+        ),
+        round_2_focus=(
+            "In Round 2, your target is the emerging Round 1 consensus — the anonymized peer "
+            "outputs — not the original proposal. Generate failure_mode findings that attack "
+            "the consensus."
+        ),
     ),
     LensId.EMPIRICAL_BENCHMARKING: LensConfig(
         id=LensId.EMPIRICAL_BENCHMARKING,
@@ -72,6 +100,8 @@ ROSTER: dict[LensId, LensConfig] = {
         ),
         characteristic_move="Propose mechanism-level accounts and the failure modes they imply.",
         role="generator+critic",
+        # Story 58: output is mechanism_hypothesis and failure_mode, not prior_art.
+        allowed_claim_types=[ClaimType.MECHANISM_HYPOTHESIS, ClaimType.FAILURE_MODE],
     ),
     LensId.INFORMATION_THEORETIC: LensConfig(
         id=LensId.INFORMATION_THEORETIC,

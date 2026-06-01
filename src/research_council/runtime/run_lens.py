@@ -9,7 +9,11 @@ Enforces the sub-agent contract in code (not prompt):
   ``schema_invalid``. Partial validity is impossible — the whole envelope is
   validated atomically by Pydantic.
 * **Code-enforced claim-type restriction.** A lens with ``allowed_claim_types``
-  (first-principles) that emits a disallowed claim type fails validation.
+  (first-principles, mechanistic-interpretability) that emits a disallowed
+  claim type fails validation.
+* **Information-theoretic anti-decoration (story 59).** Every finding the
+  information-theoretic lens emits must make at least one quantitative or
+  conditional prediction; a pure reframing fails validation.
 * **Refusal** is a first-class terminal outcome, not an error.
 
 Outcomes are a discriminated union (data the controllers branch on), never
@@ -18,6 +22,7 @@ exceptions. ``run_lens`` does not touch the store; ``persist_outcome`` does.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import Literal, assert_never
 
@@ -46,6 +51,21 @@ from .tools import EMIT_OUTPUT_TOOL, ToolRegistry, emit_output_tool_spec
 
 DEFAULT_MODEL = "claude-opus-4-8"
 MAX_EMIT_ATTEMPTS = 2  # two-strike: original + one retry
+
+# Story 59 anti-decoration check: an information-theoretic finding must make at
+# least one quantitative or conditional prediction. A digit covers quantitative
+# claims (rates, scaling, bit counts, exponents); the explicit conditional
+# markers cover "if/when/unless/..."-style predictions. Word boundaries keep
+# substrings like "uniform" from matching "if".
+_CONDITIONAL_MARKER = re.compile(
+    r"\b(if|iff|when|whenever|unless|assuming|provided|given that)\b",
+    re.IGNORECASE,
+)
+_DIGIT = re.compile(r"\d")
+
+
+def _is_quantitative_or_conditional(claim_text: str) -> bool:
+    return bool(_DIGIT.search(claim_text) or _CONDITIONAL_MARKER.search(claim_text))
 
 
 @dataclass(frozen=True)
@@ -126,6 +146,19 @@ def _validate_emit(
                 f"{{{permitted}}}; got disallowed types: {disallowed}"
             )
 
+    if inputs.lens_config.id is LensId.INFORMATION_THEORETIC:
+        decorative = [
+            f.claim_text
+            for f in draft.findings
+            if not _is_quantitative_or_conditional(f.claim_text)
+        ]
+        if decorative:
+            return None, (
+                "information-theoretic findings must each carry at least one quantitative "
+                "or conditional prediction (story 59 anti-decoration); these claims lack one: "
+                f"{decorative}"
+            )
+
     findings = [_materialize(f, id_generator, inputs.round) for f in draft.findings]
     return (
         LensRunSucceeded(
@@ -171,7 +204,7 @@ async def run_lens(
     tools = tools or {}
     granted = {name.value for name in inputs.lens_config.tool_access if name in tools}
 
-    system = build_system_prompt(inputs.lens_config, inputs.brief.mode.value)
+    system = build_system_prompt(inputs.lens_config, inputs.brief.mode.value, inputs.round)
     advertised = _advertised_tools(inputs, tools)
     messages: list[Message] = [Message(role="user", content=[TextBlock(build_lens_prompt(inputs))])]
 

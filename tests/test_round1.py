@@ -503,6 +503,45 @@ def test_round1_result_is_re_exported_and_typed() -> None:
     assert t.status == "timeout"
 
 
+async def test_runs_in_completion_order_reflects_finish_order(
+    brief: Brief, store: InMemorySessionStore, ids: SequentialIdGenerator
+) -> None:
+    # Force a known completion order: FIRST_PRINCIPLES finishes before ADVERSARIAL
+    # despite being listed second in the panel.
+    panel = (LensId.ADVERSARIAL, LensId.FIRST_PRINCIPLES)
+
+    async def slow(progress: ProgressCallback) -> LensRunOutcome:
+        progress()
+        await asyncio.sleep(0.05)
+        return _succeeded(ids)
+
+    async def fast(progress: ProgressCallback) -> LensRunOutcome:
+        progress()
+        return _succeeded(ids)
+
+    tasks: dict[LensId, LensTask] = {
+        LensId.ADVERSARIAL: slow,
+        LensId.FIRST_PRINCIPLES: fast,
+    }
+    result = await run_round_1(
+        session_id=brief.session_id,
+        brief_version=brief.version,
+        panel=panel,
+        tasks=tasks,
+        store=store,
+        id_generator=ids,
+        hard_timeout_seconds=2.0,
+        no_progress_timeout_seconds=2.0,
+    )
+    # `runs` stays in panel order, but completion order reflects finish time —
+    # this is what Round 2 anonymization (story 97) consumes.
+    assert tuple(r.lens_id for r in result.runs) == panel
+    assert tuple(r.lens_id for r in result.runs_in_completion_order) == (
+        LensId.FIRST_PRINCIPLES,
+        LensId.ADVERSARIAL,
+    )
+
+
 async def test_clock_injectable_for_dispatch_event_timestamp(
     brief: Brief, store: InMemorySessionStore, ids: SequentialIdGenerator
 ) -> None:

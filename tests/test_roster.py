@@ -39,5 +39,41 @@ def test_first_principles_is_restricted_to_mechanism_and_gap() -> None:
     assert config.allowed_claim_types == [ClaimType.MECHANISM_HYPOTHESIS, ClaimType.GAP]
 
 
+def test_mechanistic_interpretability_is_restricted_to_mechanism_and_failure_mode() -> None:
+    # Story 58: mech-interp's output is mechanism_hypothesis and failure_mode, not prior_art.
+    config = get_lens_config(LensId.MECHANISTIC_INTERPRETABILITY)
+    assert config.allowed_claim_types == [
+        ClaimType.MECHANISM_HYPOTHESIS,
+        ClaimType.FAILURE_MODE,
+    ]
+
+
+def test_empirical_benchmarking_has_both_tools() -> None:
+    # Story 57: empirical-benchmarking is critic+grounder with verifier_query + source_fetch.
+    assert set(get_lens_config(LensId.EMPIRICAL_BENCHMARKING).tool_access) == {
+        ToolName.VERIFIER_QUERY,
+        ToolName.SOURCE_FETCH,
+    }
+
+
+def test_tier2_no_tool_lenses_have_empty_access() -> None:
+    # Stories 60-62: training-data, deployment, architecture default to no tools in v0.
+    for lens_id in (
+        LensId.TRAINING_DATA_DISTRIBUTION,
+        LensId.DEPLOYMENT_SERVING,
+        LensId.ARCHITECTURE,
+    ):
+        assert get_lens_config(lens_id).tool_access == []
+
+
 def test_other_lenses_have_no_hard_claim_type_restriction() -> None:
-    assert get_lens_config(LensId.PRIOR_ART).allowed_claim_types is None
+    for lens_id in (
+        LensId.PRIOR_ART,
+        LensId.ADVERSARIAL,
+        LensId.EMPIRICAL_BENCHMARKING,
+        LensId.INFORMATION_THEORETIC,
+        LensId.TRAINING_DATA_DISTRIBUTION,
+        LensId.DEPLOYMENT_SERVING,
+        LensId.ARCHITECTURE,
+    ):
+        assert get_lens_config(lens_id).allowed_claim_types is None

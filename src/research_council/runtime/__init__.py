@@ -14,7 +14,9 @@ from .inputs import (
     build_lens_prompt,
     build_prior_self,
     build_system_prompt,
+    quarantine_block,
 )
+from .lens_tools import SourceBodyFetcher, SourceFetchTool, VerifierQueryTool
 from .llm import (
     AnthropicLlmClient,
     FakeLlmClient,
@@ -35,6 +37,14 @@ from .round1 import (
     Round1Result,
     run_round_1,
 )
+from .round2 import (
+    MANDATORY_PARTICIPANTS,
+    MIN_ROUND_1_SUCCESSES_FOR_ROUND_2,
+    OPT_IN_HEURISTIC_PHRASE,
+    Round2Result,
+    Round2TaskBuilder,
+    run_round_2,
+)
 from .run_lens import (
     DEFAULT_MODEL,
     LensRunOutcome,
@@ -52,6 +62,9 @@ __all__ = [
     "DEFAULT_HARD_TIMEOUT_SECONDS",
     "DEFAULT_MODEL",
     "DEFAULT_NO_PROGRESS_TIMEOUT_SECONDS",
+    "MANDATORY_PARTICIPANTS",
+    "MIN_ROUND_1_SUCCESSES_FOR_ROUND_2",
+    "OPT_IN_HEURISTIC_PHRASE",
     "AnonymizedPeer",
     "AnthropicLlmClient",
     "FakeLlmClient",
@@ -68,18 +81,25 @@ __all__ = [
     "PeerOutput",
     "ProgressCallback",
     "Round1Result",
+    "Round2Result",
+    "Round2TaskBuilder",
+    "SourceBodyFetcher",
+    "SourceFetchTool",
     "TextBlock",
     "Tool",
     "ToolRegistry",
     "ToolResultBlock",
     "ToolUseBlock",
     "TracingLlmClient",
+    "VerifierQueryTool",
     "anonymize_peers",
     "build_lens_prompt",
     "build_prior_self",
     "build_system_prompt",
     "emit_output_tool_spec",
     "persist_outcome",
+    "quarantine_block",
     "run_lens",
     "run_round_1",
+    "run_round_2",
 ]
