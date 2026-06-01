@@ -129,6 +129,7 @@ CREATE TABLE IF NOT EXISTS traces (
 CREATE INDEX IF NOT EXISTS idx_traces_caller ON traces(caller_ref, rowid_order);
 """
 
+
 def _dump(model: FrozenModel) -> str:
     return model.model_dump_json()
 
@@ -164,8 +165,10 @@ class SqliteSessionStore:
         self.close()
 
     def _read_trace_high_water(self) -> int:
-        row = self._conn.execute("SELECT COALESCE(MAX(rowid_order), 0) FROM traces").fetchone()
-        return int(row[0]) if row else 0
+        (high_water,) = self._conn.execute(
+            "SELECT COALESCE(MAX(rowid_order), 0) FROM traces"
+        ).fetchone()
+        return int(high_water)
 
     # Session ---------------------------------------------------------------
     def save_session(self, session: Session) -> None:
@@ -254,17 +257,11 @@ class SqliteSessionStore:
     def list_lens_runs_for_brief(
         self, session_id: SessionId, version: int, round: Round | None = None
     ) -> list[LensRun]:
-        if round is None:
-            rows = self._conn.execute(
-                "SELECT payload FROM lens_runs WHERE session_id = ? AND brief_version = ?",
-                (session_id, version),
-            ).fetchall()
-        else:
-            rows = self._conn.execute(
-                "SELECT payload FROM lens_runs "
-                "WHERE session_id = ? AND brief_version = ? AND round = ?",
-                (session_id, version, round),
-            ).fetchall()
+        rows = self._conn.execute(
+            "SELECT payload FROM lens_runs "
+            "WHERE session_id = ? AND brief_version = ? AND (? IS NULL OR round = ?)",
+            (session_id, version, round, round),
+        ).fetchall()
         return [_load(LensRun, r[0]) for r in rows]
 
     def list_lens_runs_for_lens(
@@ -320,7 +317,7 @@ class SqliteSessionStore:
         canonical = canonical_id_for_source(source)
         existing = self.get_source(canonical)
         if existing is not None:
-            return existing  # first-writer wins; dup deduped to the existing source
+            return existing
         self._conn.execute(
             "INSERT INTO sources (canonical_id, payload) VALUES (?, ?)",
             (canonical, _dump(source)),
