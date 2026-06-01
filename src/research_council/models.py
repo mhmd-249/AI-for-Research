@@ -331,6 +331,31 @@ class Verdict(FrozenModel):
     predictions_invalidated: tuple[VerdictRef, ...] = Field(default_factory=tuple)
 
 
+# --- Verdict loader envelopes -----------------------------------------------
+# The hand-authored Verdict file (story 125) carries no id and no
+# resolved_finding_ids — those are minted / derived. A Draft mirrors the
+# author-visible surface so the loader fails fast if either appears.
+
+
+class VerdictRefDraft(FrozenModel):
+    """A loose reference as an engineer writes it in the file: (lens, excerpt)
+    only. Resolution to specific Findings happens later in ``verdict_ops``."""
+
+    lens: LensId
+    claim_text_excerpt: str
+
+
+class VerdictDraft(FrozenModel):
+    """The hand-authored Verdict envelope (stories 124-128). The id is minted on
+    materialize; resolved_finding_ids are populated by the resolver."""
+
+    session_ref: SessionId
+    decision: Decision
+    outcome_summary: str
+    predictions_validated: list[VerdictRefDraft] = Field(default_factory=list)
+    predictions_invalidated: list[VerdictRefDraft] = Field(default_factory=list)
+
+
 class SelfUseLog(FrozenModel):
     """Four hand-entered fields per session close (story 153)."""
 

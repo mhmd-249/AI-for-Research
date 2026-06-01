@@ -7,6 +7,8 @@ requires-python = ">=3.12"
 dependencies = [
     "pydantic>=2.9",
     "anthropic>=0.39",
+    "pyyaml>=6.0.3",
+    "types-pyyaml>=6.0.12.20260518",
 ]
 
 [project.scripts]
