@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from datetime import UTC, datetime
+from pathlib import Path
 
 import pytest
 
@@ -25,7 +27,11 @@ from research_council.models import (
     Session,
     Source,
 )
-from research_council.store import InMemorySessionStore
+from research_council.store import (
+    InMemorySessionStore,
+    SessionStoreAndTrace,
+    SqliteSessionStore,
+)
 
 
 @pytest.fixture
@@ -33,9 +39,18 @@ def ids() -> SequentialIdGenerator:
     return SequentialIdGenerator()
 
 
-@pytest.fixture
-def store() -> InMemorySessionStore:
-    return InMemorySessionStore()
+@pytest.fixture(params=["memory", "sqlite"])
+def store(request: pytest.FixtureRequest, tmp_path: Path) -> Iterator[SessionStoreAndTrace]:
+    # Parametrizing the store fixture is how the in-memory test suite passes
+    # unchanged against SQLite (PRD story 145, issue #13 acceptance).
+    if request.param == "memory":
+        yield InMemorySessionStore()
+        return
+    sqlite_store = SqliteSessionStore(tmp_path / "store.db")
+    try:
+        yield sqlite_store
+    finally:
+        sqlite_store.close()
 
 
 @pytest.fixture

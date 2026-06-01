@@ -1,5 +1,8 @@
-"""InMemorySessionStore: round-trips every domain object, dedups sources, and
-isolates stored state from caller references."""
+"""Store round-trip suite. Parametrized over both InMemorySessionStore and
+SqliteSessionStore (see ``store`` fixture in conftest.py) so the contract is
+verified identically on both implementations — that's how issue #13's
+acceptance criterion "the in-memory test suite passes unchanged against
+[SQLite]" is satisfied."""
 
 from __future__ import annotations
 
@@ -40,15 +43,15 @@ from research_council.models import (
     VerdictRef,
     VerificationResult,
 )
-from research_council.store import InMemorySessionStore
+from research_council.store import SessionStoreAndTrace
 
 
-def test_session_round_trip(store: InMemorySessionStore, session: Session) -> None:
+def test_session_round_trip(store: SessionStoreAndTrace, session: Session) -> None:
     store.save_session(session)
     assert store.get_session(session.id) == session
 
 
-def test_brief_versions_round_trip(store: InMemorySessionStore, brief: Brief) -> None:
+def test_brief_versions_round_trip(store: SessionStoreAndTrace, brief: Brief) -> None:
     v2 = brief.model_copy(update={"version": 2})
     store.save_brief(brief)
     store.save_brief(v2)
@@ -58,13 +61,13 @@ def test_brief_versions_round_trip(store: InMemorySessionStore, brief: Brief) ->
     assert [b.version for b in store.list_brief_versions(brief.session_id)] == [1, 2]
 
 
-def test_finding_round_trip(store: InMemorySessionStore, finding: Finding) -> None:
+def test_finding_round_trip(store: SessionStoreAndTrace, finding: Finding) -> None:
     store.save_finding(finding)
     assert store.get_finding(finding.id) == finding
 
 
 def test_lens_run_and_findings_join(
-    store: InMemorySessionStore, ids: SequentialIdGenerator, session: Session, finding: Finding
+    store: SessionStoreAndTrace, ids: SequentialIdGenerator, session: Session, finding: Finding
 ) -> None:
     store.save_finding(finding)
     run = LensRun(
@@ -87,7 +90,7 @@ def test_lens_run_and_findings_join(
 
 
 def test_list_findings_for_session_includes_superseded(
-    store: InMemorySessionStore, ids: SequentialIdGenerator, session: Session, finding: Finding
+    store: SessionStoreAndTrace, ids: SequentialIdGenerator, session: Session, finding: Finding
 ) -> None:
     # A challenge revision creates a new Finding pointing back via supersedes;
     # the session-level query is literal and must return BOTH the original and
@@ -110,7 +113,7 @@ def test_list_findings_for_session_includes_superseded(
     assert {f.id for f in found} == {finding.id, revised.id}
 
 
-def test_source_dedup_in_store(store: InMemorySessionStore) -> None:
+def test_source_dedup_in_store(store: SessionStoreAndTrace) -> None:
     cid = canonical_source_id(arxiv_id="2307.03172")
     first = Source(canonical_id=cid, title="Lost in the Middle", arxiv_id="2307.03172")
     dup = Source(canonical_id=cid, title="DIFFERENT TITLE SAME PAPER", arxiv_id="2307.03172v2")
@@ -124,7 +127,7 @@ def test_source_dedup_in_store(store: InMemorySessionStore) -> None:
 
 
 def test_dispatch_event_round_trip(
-    store: InMemorySessionStore, ids: SequentialIdGenerator, session: Session, now: datetime
+    store: SessionStoreAndTrace, ids: SequentialIdGenerator, session: Session, now: datetime
 ) -> None:
     event = DispatchEvent(
         id=new_dispatch_event_id(ids),
@@ -139,7 +142,7 @@ def test_dispatch_event_round_trip(
 
 
 def test_verification_result_round_trip(
-    store: InMemorySessionStore, ids: SequentialIdGenerator, finding: Finding
+    store: SessionStoreAndTrace, ids: SequentialIdGenerator, finding: Finding
 ) -> None:
     result = VerificationResult(
         id=new_verification_result_id(ids),
@@ -153,7 +156,7 @@ def test_verification_result_round_trip(
 
 
 def test_challenge_round_trip(
-    store: InMemorySessionStore, ids: SequentialIdGenerator, session: Session, finding: Finding
+    store: SessionStoreAndTrace, ids: SequentialIdGenerator, session: Session, finding: Finding
 ) -> None:
     challenge = Challenge(
         id=new_challenge_id(ids),
@@ -167,7 +170,7 @@ def test_challenge_round_trip(
 
 
 def test_synthesis_round_trip(
-    store: InMemorySessionStore, ids: SequentialIdGenerator, session: Session, finding: Finding
+    store: SessionStoreAndTrace, ids: SequentialIdGenerator, session: Session, finding: Finding
 ) -> None:
     synthesis = Synthesis(
         id=new_synthesis_id(ids),
@@ -186,7 +189,7 @@ def test_synthesis_round_trip(
 
 
 def test_verdict_round_trip(
-    store: InMemorySessionStore, ids: SequentialIdGenerator, session: Session
+    store: SessionStoreAndTrace, ids: SequentialIdGenerator, session: Session
 ) -> None:
     verdict = Verdict(
         id=new_verdict_id(ids),
@@ -201,7 +204,7 @@ def test_verdict_round_trip(
     assert store.get_verdict(session.id) == verdict
 
 
-def test_self_use_log_round_trip(store: InMemorySessionStore, session: Session) -> None:
+def test_self_use_log_round_trip(store: SessionStoreAndTrace, session: Session) -> None:
     log = SelfUseLog(
         session_ref=session.id,
         time_to_dispatch_minutes=12.0,
@@ -214,7 +217,7 @@ def test_self_use_log_round_trip(store: InMemorySessionStore, session: Session) 
 
 
 def test_trace_round_trip(
-    store: InMemorySessionStore, ids: SequentialIdGenerator, now: datetime
+    store: SessionStoreAndTrace, ids: SequentialIdGenerator, now: datetime
 ) -> None:
     record = TraceRecord(
         id=new_trace_record_id(ids),
@@ -230,7 +233,7 @@ def test_trace_round_trip(
 
 
 def test_store_isolates_caller_from_stored_state(
-    store: InMemorySessionStore, session: Session
+    store: SessionStoreAndTrace, session: Session
 ) -> None:
     with_notes = session.model_copy(update={"notes": ("one",)})
     store.save_session(with_notes)
