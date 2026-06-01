@@ -192,7 +192,7 @@ def _resolve_refs(
     diagnostics: list[ResolutionDiagnostic] = []
     for i, ref in enumerate(refs):
         if ref.resolved_finding_ids:
-            # Cache hit: the field already carries the answer; do not re-match.
+            # Cache hit: leave the ref alone and emit no diagnostic.
             resolved.append(ref)
             continue
         candidates = findings_by_lens.get(ref.lens, [])
@@ -202,43 +202,27 @@ def _resolve_refs(
             if _fuzzy_matches(ref.claim_text_excerpt, f.claim_text, threshold)
         )
         if len(matches) == 1:
-            diagnostics.append(
-                ResolutionDiagnostic(
-                    ref_kind=kind,
-                    ref_index=i,
-                    lens=ref.lens,
-                    excerpt=ref.claim_text_excerpt,
-                    status=ResolutionStatus.RESOLVED,
-                    candidate_finding_ids=matches,
-                )
-            )
+            status = ResolutionStatus.RESOLVED
             resolved.append(ref.model_copy(update={"resolved_finding_ids": matches}))
         elif len(matches) > 1:
-            # Ambiguous: do NOT cache (engineer must disambiguate the excerpt).
-            # Candidates are surfaced so the engineer can see what to choose between.
-            diagnostics.append(
-                ResolutionDiagnostic(
-                    ref_kind=kind,
-                    ref_index=i,
-                    lens=ref.lens,
-                    excerpt=ref.claim_text_excerpt,
-                    status=ResolutionStatus.AMBIGUOUS,
-                    candidate_finding_ids=matches,
-                )
-            )
+            # Ambiguous and no-match refs keep an empty cache so the engineer
+            # is forced to refine the excerpt; candidates are surfaced via the
+            # diagnostic rather than silently dropped.
+            status = ResolutionStatus.AMBIGUOUS
             resolved.append(ref)
         else:
-            diagnostics.append(
-                ResolutionDiagnostic(
-                    ref_kind=kind,
-                    ref_index=i,
-                    lens=ref.lens,
-                    excerpt=ref.claim_text_excerpt,
-                    status=ResolutionStatus.NO_MATCH,
-                    candidate_finding_ids=(),
-                )
-            )
+            status = ResolutionStatus.NO_MATCH
             resolved.append(ref)
+        diagnostics.append(
+            ResolutionDiagnostic(
+                ref_kind=kind,
+                ref_index=i,
+                lens=ref.lens,
+                excerpt=ref.claim_text_excerpt,
+                status=status,
+                candidate_finding_ids=matches,
+            )
+        )
     return tuple(resolved), tuple(diagnostics)
 
 

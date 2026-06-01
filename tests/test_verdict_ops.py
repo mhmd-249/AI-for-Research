@@ -28,6 +28,7 @@ from research_council.ids import (
     SequentialIdGenerator,
     new_finding_id,
     new_lens_run_id,
+    new_verdict_id,
 )
 from research_council.models import (
     Brief,
@@ -205,17 +206,11 @@ def _save_finding_under_lens(
     return finding
 
 
-def _save_brief(store: InMemorySessionStore, brief: Brief) -> None:
-    store.save_brief(brief)
-
-
 def _build_verdict(
     ids: SequentialIdGenerator,
     session: Session,
     refs: list[VerdictRef],
 ) -> Verdict:
-    from research_council.ids import new_verdict_id
-
     return Verdict(
         id=new_verdict_id(ids),
         session_ref=session.id,
@@ -228,7 +223,7 @@ def _build_verdict(
 def test_resolver_populates_resolved_ids_for_unambiguous_match(
     store: InMemorySessionStore, ids: SequentialIdGenerator, session: Session, brief: Brief
 ) -> None:
-    _save_brief(store, brief)
+    store.save_brief(brief)
     finding = _save_finding_under_lens(
         store,
         ids,
@@ -252,7 +247,7 @@ def test_resolver_populates_resolved_ids_for_unambiguous_match(
 def test_resolver_filters_by_lens(
     store: InMemorySessionStore, ids: SequentialIdGenerator, session: Session, brief: Brief
 ) -> None:
-    _save_brief(store, brief)
+    store.save_brief(brief)
     # A different lens also emitted a claim with the same excerpt — the resolver
     # must NOT consider it (eval asks "when lens X emitted Y, was it right?").
     _save_finding_under_lens(
@@ -287,7 +282,7 @@ def test_resolver_caches_already_resolved_refs(
     # If a ref already carries resolved_finding_ids, the resolver leaves it as
     # the cached truth — even if the excerpt no longer matches anything in the
     # store (the cache IS the persistence).
-    _save_brief(store, brief)
+    store.save_brief(brief)
     cached_id = new_finding_id(ids)
     verdict = _build_verdict(
         ids,
@@ -310,7 +305,7 @@ def test_resolver_caches_already_resolved_refs(
 def test_resolver_emits_no_match_diagnostic(
     store: InMemorySessionStore, ids: SequentialIdGenerator, session: Session, brief: Brief
 ) -> None:
-    _save_brief(store, brief)
+    store.save_brief(brief)
     _save_finding_under_lens(
         store,
         ids,
@@ -337,7 +332,7 @@ def test_resolver_emits_no_match_diagnostic(
 def test_resolver_emits_ambiguous_diagnostic(
     store: InMemorySessionStore, ids: SequentialIdGenerator, session: Session, brief: Brief
 ) -> None:
-    _save_brief(store, brief)
+    store.save_brief(brief)
     a = _save_finding_under_lens(
         store,
         ids,
@@ -373,7 +368,7 @@ def test_resolver_fuzzy_matches_minor_typos(
     store: InMemorySessionStore, ids: SequentialIdGenerator, session: Session, brief: Brief
 ) -> None:
     # An engineer's excerpt typed from memory months later will not be exact.
-    _save_brief(store, brief)
+    store.save_brief(brief)
     finding = _save_finding_under_lens(
         store,
         ids,
@@ -400,7 +395,7 @@ def test_resolver_fuzzy_matches_minor_typos(
 def test_resolver_runs_on_both_validated_and_invalidated(
     store: InMemorySessionStore, ids: SequentialIdGenerator, session: Session, brief: Brief
 ) -> None:
-    _save_brief(store, brief)
+    store.save_brief(brief)
     validated = _save_finding_under_lens(
         store,
         ids,
@@ -417,8 +412,6 @@ def test_resolver_runs_on_both_validated_and_invalidated(
         brief_version=brief.version,
         claim_text="The proposal is brittle under domain shift.",
     )
-    from research_council.ids import new_verdict_id
-
     verdict = Verdict(
         id=new_verdict_id(ids),
         session_ref=session.id,
@@ -446,7 +439,7 @@ def test_load_materialize_resolve_round_trip(
 ) -> None:
     # The full v0 flow: load -> materialize -> resolve. Author wrote the excerpt;
     # the system attached precise pointers without the author touching IDs.
-    _save_brief(store, brief)
+    store.save_brief(brief)
     finding = _save_finding_under_lens(
         store,
         ids,
