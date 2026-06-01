@@ -19,7 +19,7 @@ exceptions. ``run_lens`` does not touch the store; ``persist_outcome`` does.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Literal
+from typing import Literal, assert_never
 
 from pydantic import ValidationError
 
@@ -293,7 +293,7 @@ def persist_outcome(
             status=LensRunStatus.SCHEMA_INVALID,
             raw_output=outcome.raw_output,
         )
-    else:
+    elif isinstance(outcome, LensRunTimeout):
         run = LensRun(
             id=run_id,
             lens_id=lens_id,
@@ -303,6 +303,8 @@ def persist_outcome(
             dispatch_event_id=dispatch_event_id,
             status=LensRunStatus.TIMEOUT,
         )
+    else:
+        assert_never(outcome)
 
     store.save_lens_run(run)
     return run

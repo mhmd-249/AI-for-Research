@@ -125,33 +125,40 @@ async def _run_with_timeouts(
     return main_task.result()
 
 
+def _names_with_status(
+    runs: tuple[LensRun, ...], status: LensRunStatus
+) -> list[str]:
+    return sorted(r.lens_id.value for r in runs if r.status is status)
+
+
 def _summarize_for_synthesis(runs: tuple[LensRun, ...]) -> str:
     """Synthesis-input summary (story 91). Names schema_invalid lenses explicitly
     and notes that raw output is preserved; also surfaces timeouts and refusals
     so the synthesizer can see why the count is short."""
-    dispatched = len(runs)
     valid = sum(1 for r in runs if r.status is LensRunStatus.SUCCEEDED)
-    parts = [f"{dispatched} lenses dispatched", f"{valid} produced valid output"]
+    parts = [f"{len(runs)} lenses dispatched", f"{valid} produced valid output"]
 
-    schema_invalid = sorted(
-        r.lens_id.value for r in runs if r.status is LensRunStatus.SCHEMA_INVALID
-    )
+    schema_invalid = _names_with_status(runs, LensRunStatus.SCHEMA_INVALID)
     if schema_invalid:
-        names = ", ".join(schema_invalid)
         parts.append(
-            f"{len(schema_invalid)} ({names}) failed schema validation after retry "
-            "— excluded from synthesis. Raw output preserved for debugging."
+            f"{len(schema_invalid)} ({', '.join(schema_invalid)}) failed schema "
+            "validation after retry — excluded from synthesis. "
+            "Raw output preserved for debugging."
         )
 
-    timed_out = sorted(r.lens_id.value for r in runs if r.status is LensRunStatus.TIMEOUT)
+    timed_out = _names_with_status(runs, LensRunStatus.TIMEOUT)
     if timed_out:
-        names = ", ".join(timed_out)
-        parts.append(f"{len(timed_out)} ({names}) timed out — excluded from synthesis.")
+        parts.append(
+            f"{len(timed_out)} ({', '.join(timed_out)}) timed out "
+            "— excluded from synthesis."
+        )
 
-    refused = sorted(r.lens_id.value for r in runs if r.status is LensRunStatus.REFUSED)
+    refused = _names_with_status(runs, LensRunStatus.REFUSED)
     if refused:
-        names = ", ".join(refused)
-        parts.append(f"{len(refused)} ({names}) refused — excluded from synthesis.")
+        parts.append(
+            f"{len(refused)} ({', '.join(refused)}) refused "
+            "— excluded from synthesis."
+        )
 
     return "; ".join(parts) + "."
 
@@ -209,8 +216,7 @@ async def run_round_1(
             dispatch_event_id=dispatch_event_id,
         )
 
-    runs_list = await asyncio.gather(*(_run_one(lens_id) for lens_id in panel))
-    runs = tuple(runs_list)
+    runs = tuple(await asyncio.gather(*(_run_one(lens_id) for lens_id in panel)))
 
     dispatch_event = DispatchEvent(
         id=dispatch_event_id,
