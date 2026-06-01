@@ -172,7 +172,7 @@ def _collect_findings_by_lens(
     by_lens: dict[LensId, list[Finding]] = {}
     seen: set[FindingId] = set()
     for brief in store.list_brief_versions(session_id):
-        for run in store.list_lens_runs_for_brief(brief.session_id, brief.version):
+        for run in store.list_lens_runs_for_brief(session_id, brief.version):
             for fid in run.finding_ids:
                 if fid in seen:
                     continue
@@ -206,14 +206,13 @@ def _resolve_refs(
         if len(matches) == 1:
             status = ResolutionStatus.RESOLVED
             resolved.append(ref.model_copy(update={"resolved_finding_ids": matches}))
-        elif len(matches) > 1:
-            # Ambiguous and no-match refs keep an empty cache so the engineer
-            # is forced to refine the excerpt; candidates are surfaced via the
-            # diagnostic rather than silently dropped.
-            status = ResolutionStatus.AMBIGUOUS
-            resolved.append(ref)
         else:
-            status = ResolutionStatus.NO_MATCH
+            # Ambiguous (>1 candidates) and no-match refs both keep an empty
+            # cache so the engineer must refine the excerpt; candidates are
+            # surfaced via the diagnostic rather than silently dropped.
+            status = (
+                ResolutionStatus.AMBIGUOUS if len(matches) > 1 else ResolutionStatus.NO_MATCH
+            )
             resolved.append(ref)
         diagnostics.append(
             ResolutionDiagnostic(
