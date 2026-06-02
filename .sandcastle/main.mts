@@ -10,8 +10,10 @@
 //                               reviewer runs in the same sandbox on the same
 //                               branch (1 iteration). All issue pipelines run
 //                               concurrently via Promise.allSettled().
-//   Phase 3 (Merge):            A single agent merges all completed branches
-//                               into the current branch.
+//   Phase 3 (Merge):            A single agent merges every branch that carries
+//                               unmerged commits for a still-open issue — including
+//                               branches stranded by an earlier iteration — into
+//                               the current branch.
 //
 // The outer loop repeats up to MAX_ITERATIONS times so that newly unblocked
 // issues are picked up after each round of merges.
@@ -20,6 +22,8 @@
 //   npx tsx .sandcastle/main.mts
 // Or add to package.json:
 //   "scripts": { "sandcastle": "npx tsx .sandcastle/main.mts" }
+
+import { execSync } from "node:child_process";
 
 import * as sandcastle from "@ai-hero/sandcastle";
 import { docker } from "@ai-hero/sandcastle/sandboxes/docker";
@@ -54,6 +58,69 @@ const hooks = {
 // (macOS host vs. Linux sandbox), so it is rebuilt by `uv sync` above rather
 // than copied. uv's download cache keeps that fast.
 const copyToWorktree: string[] = [];
+
+// ---------------------------------------------------------------------------
+// Merge-selection helpers
+//
+// A branch must be merged whenever it carries commits the base branch does not
+// yet have — NOT only when the current iteration's implementer produced commits.
+// Otherwise a branch whose work was fully committed in an earlier iteration (its
+// implementer now correctly reports "no new commits") never lands: the issue
+// stays open, the planner re-selects it next cycle, and the loop spins on it
+// until MAX_ITERATIONS. These helpers let the merge phase pick up any open-issue
+// branch that has unmerged commits, regardless of which iteration produced them.
+// ---------------------------------------------------------------------------
+
+// Run a host git/gh command and return its trimmed stdout.
+function sh(cmd: string): string {
+  return execSync(cmd, { encoding: "utf8" }).trim();
+}
+
+// The branch the loop merges into. Captured once: the merge phase merges into it
+// and leaves it checked out, so it does not change across iterations.
+const baseBranch = sh("git rev-parse --abbrev-ref HEAD");
+
+// True if `branch` has commits the base branch does not yet contain.
+function branchIsAhead(branch: string): boolean {
+  try {
+    return Number(sh(`git rev-list --count ${baseBranch}..${branch}`)) > 0;
+  } catch {
+    // Branch ref absent on the host (no commits ever synced) → nothing to merge.
+    return false;
+  }
+}
+
+// Local sandcastle/issue-<N> branches, each paired with its issue number.
+function sandcastleIssueBranches(): { branch: string; id: string }[] {
+  let out: string;
+  try {
+    out = sh("git for-each-ref --format='%(refname:short)' refs/heads/sandcastle/");
+  } catch {
+    return [];
+  }
+  const branches: { branch: string; id: string }[] = [];
+  for (const branch of out.split("\n").filter(Boolean)) {
+    const match = branch.match(/^sandcastle\/issue-(\d+)$/);
+    if (match) branches.push({ branch, id: match[1]! });
+  }
+  return branches;
+}
+
+// Map of open-issue number → title, so the merge sweep can label stranded
+// branches and never merges one whose issue is already closed. Empty on error,
+// which safely degrades to merging only this iteration's planned branches.
+function openIssueTitles(): Map<string, string> {
+  const titles = new Map<string, string>();
+  try {
+    const json = sh("gh issue list --state open --limit 200 --json number,title");
+    for (const issue of JSON.parse(json) as { number: number; title: string }[]) {
+      titles.set(String(issue.number), issue.title);
+    }
+  } catch (err) {
+    console.warn(`  Could not list open issues (${err}); merging planned branches only.`);
+  }
+  return titles;
+}
 
 // ---------------------------------------------------------------------------
 // Main loop
@@ -171,17 +238,36 @@ for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
     }
   }
 
-  // Only pass branches that actually produced commits to the merge phase.
-  // An agent that ran successfully but made no commits has nothing to merge.
-  const completedIssues = settled
-    .map((outcome, i) => ({ outcome, issue: issues[i]! }))
-    .filter(
-      (entry) =>
-        entry.outcome.status === "fulfilled" &&
-        entry.outcome.value.commits.length > 0,
-    )
-    .map((entry) => entry.issue);
+  // Decide what to merge. A branch belongs in the merge set when it carries
+  // commits the base branch lacks — whether produced this iteration or
+  // committed-but-never-merged in an earlier one. Keyed by issue id to dedupe.
+  const mergeById = new Map<string, { id: string; title: string; branch: string }>();
 
+  // This iteration's planned issues: include any whose pipeline fulfilled and
+  // whose branch carries commits. The commits.length check preserves the
+  // original signal; branchIsAhead additionally catches a branch fully committed
+  // in a prior iteration whose implementer made no new commits this time.
+  for (const [i, outcome] of settled.entries()) {
+    if (outcome.status !== "fulfilled") continue;
+    const issue = issues[i]!;
+    if (outcome.value.commits.length > 0 || branchIsAhead(issue.branch)) {
+      mergeById.set(issue.id, issue);
+    }
+  }
+
+  // Sweep up any other open-issue branch with unmerged commits, so a branch
+  // stranded by an earlier iteration lands even if the planner did not
+  // re-select its issue this round.
+  const openTitles = openIssueTitles();
+  for (const { branch, id } of sandcastleIssueBranches()) {
+    if (mergeById.has(id)) continue;
+    const title = openTitles.get(id);
+    if (title === undefined) continue; // closed/merged issue — leave it alone
+    if (!branchIsAhead(branch)) continue;
+    mergeById.set(id, { id, title, branch });
+  }
+
+  const completedIssues = [...mergeById.values()];
   const completedBranches = completedIssues.map((i) => i.branch);
 
   console.log(
@@ -192,8 +278,8 @@ for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
   }
 
   if (completedBranches.length === 0) {
-    // All agents ran but none made commits — nothing to merge this cycle.
-    console.log("No commits produced. Nothing to merge.");
+    // No branch carries unmerged commits this cycle — nothing to merge.
+    console.log("No unmerged commits on any open-issue branch. Nothing to merge.");
     continue;
   }
 
